@@ -5,6 +5,10 @@
 ;; placeholders. This file is not loaded by corral itself -- it's a
 ;; template, kept out of the installed package (see AGENTS.md's
 ;; Repository Structure: examples/ isn't part of the shipped package).
+;;
+;; This is the production template: installing from a pushed remote.
+;; If you're developing corral itself against a local checkout, see
+;; setup-corral-devel.el.example instead.
 
 ;;; Commentary:
 
@@ -26,22 +30,17 @@
 
 ;; --- Installation ---
 ;;
-;; The straightforward case: a pushed GitHub/GitLab/Codeberg/sr.ht
-;; remote is recognized automatically.
-(unless (package-installed-p 'corral)
+;; A pushed GitHub/GitLab/Codeberg/sr.ht remote is recognized
+;; automatically by package-vc's URL-sniffing heuristic.
+;;
+;; package-vc-install only clones what's committed as of whenever it
+;; (or package-vc-upgrade) last ran -- it isn't live against the
+;; remote. Calling package-vc-upgrade on every startup once installed
+;; means a fresh pull + recompile happens automatically instead of
+;; requiring a manual M-x package-vc-upgrade after every new release.
+(if (package-installed-p 'corral)
+    (ignore-errors (package-vc-upgrade 'corral))
   (package-vc-install "https://github.com/antoniocamas/corral"))
-
-;; If you're pointing this at a local checkout instead (e.g. while
-;; developing corral itself), package-vc's URL-sniffing heuristic
-;; won't recognize a bare filesystem path, and you must supply the VC
-;; backend explicitly or it fails with "Unknown package to fetch":
-;;
-;;   (package-vc-install "/path/to/your/corral/checkout" nil 'Git)
-;;
-;; Either way, after every new commit to whatever you installed from,
-;; run M-x package-vc-upgrade to pick it up -- package-vc-install
-;; isn't live against a working tree, only against what was committed
-;; as of whenever it (or the upgrade command) last ran.
 
 (require 'corral)
 

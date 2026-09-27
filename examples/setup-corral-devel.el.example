@@ -1,0 +1,62 @@
+;;; setup-corral-devel.el.example --- devel template config for corral -*- lexical-binding: t; -*-
+
+;; Copy this into your own init and edit the placeholders. This file
+;; is not loaded by corral itself -- it's a template, kept out of the
+;; installed package (see AGENTS.md's Repository Structure: examples/
+;; isn't part of the shipped package).
+;;
+;; This is the devel template: installing from your own local checkout
+;; while working on corral itself. For installing a released version
+;; from a pushed remote, see setup-corral.el.example instead.
+
+;;; Commentary:
+
+;; M-x corral-show-panel   -- open the side panel
+;; M-x corral-launch-claude -- the default `claude' variant
+;;
+;; M-x corral-reload-from-source -- test in-progress, UNCOMMITTED
+;; changes without committing and without package-vc-upgrade. Reloads
+;; every corral-* feature directly from the working tree (bypassing
+;; the package-vc-installed copy for this session only) and
+;; re-registers any variants you've added, since reloading resets
+;; corral's internal harness/variant tables along with everything
+;; else. Whatever is currently on disk is what gets loaded -- no need
+;; to track which files changed by hand.
+
+;;; Code:
+
+;; --- Installation ---
+;;
+;; package-vc's URL-sniffing heuristic doesn't recognize a bare
+;; filesystem path, so the VC backend must be given explicitly, or it
+;; fails with "Unknown package to fetch".
+;;
+;; package-vc-install only clones what's committed as of whenever it
+;; (or package-vc-upgrade) last ran -- it isn't live against the
+;; working tree. Calling package-vc-upgrade on every startup once
+;; installed means a fresh pull + recompile happens automatically
+;; instead of requiring a manual M-x package-vc-upgrade after every new
+;; commit. This still only picks up committed changes -- for testing
+;; uncommitted edits, use M-x corral-reload-from-source instead (see
+;; Commentary above).
+(if (package-installed-p 'corral)
+    (ignore-errors (package-vc-upgrade 'corral))
+  (package-vc-install "/path/to/your/corral/checkout" nil 'Git))
+
+(require 'corral)
+
+(defun corral-reload-from-source ()
+  "Reload all corral-* features directly from your working tree,
+bypassing the package-vc-installed copy entirely for this session --
+no commit and no package-vc-upgrade needed to test in-progress
+changes. Picks up whatever is currently on disk; no need to track
+which files changed."
+  (interactive)
+  (dolist (feature '(corral corral-claude corral-hook corral-harness
+                     corral-panel corral-vterm corral-core))
+    (when (featurep feature)
+      (unload-feature feature t)))
+  (let ((load-path (cons "/path/to/your/corral/checkout" load-path)))
+    (require 'corral)))
+
+;;; setup-corral-devel.el.example ends here

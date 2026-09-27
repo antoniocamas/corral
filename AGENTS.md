@@ -50,6 +50,7 @@ be one itself.
 
 - `docs/architecture.md` — Read when navigating unfamiliar code, adding a new file, or before touching the settings.json merge logic
 - `docs/inspiration.md` — attribution and what specifically was and wasn't carried over from herdr
+- `docs/deployment.md` — Read before changing how corral is installed or updated (production vs. devel, the package-vc-upgrade-on-startup pattern)
 
 ## Rules
 
