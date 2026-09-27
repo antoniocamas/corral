@@ -1,10 +1,9 @@
 # Architecture
 
 Per-file responsibilities. Flat `.el` files at repo root, organized by
-filename prefix, not subdirectories — see `../SKELETON.md` in the
-sibling `emacs-herd` checkout for why (MELPA's default file-globbing
+filename prefix, not subdirectories: MELPA's default file-globbing
 and `load-path` not recursing both argue against a `harnesses/`-style
-subdirectory). Package name == file name == `provide` symbol, per file.
+subdirectory. Package name == file name == `provide` symbol, per file.
 
 - `corral.el` — entry point: package headers, requires everything.
 - `corral-core.el` — session registry (`corral--sessions`), state

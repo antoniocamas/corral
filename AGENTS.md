@@ -49,6 +49,7 @@ be one itself.
 ## System Documents
 
 - `docs/architecture.md` — Read when navigating unfamiliar code, adding a new file, or before touching the settings.json merge logic
+- `docs/inspiration.md` — attribution and what specifically was and wasn't carried over from herdr
 
 ## Rules
 

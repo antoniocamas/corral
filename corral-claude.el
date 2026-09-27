@@ -64,12 +64,10 @@ globally."
 
 SessionStart maps to `idle', not `working': right after a session
 starts, Claude Code is sitting at its empty prompt waiting for the
-first message, not doing anything yet. Confirmed against herdr's own
-real mapping (herdr/src/integration/claude_settings.rs's
-HOOK_REMOVALS) after a real bug report: an earlier version of this
-table had it wrong as `working', which made every fresh session
-appear permanently busy until the first tool use, never showing as
-idle while actually just sitting at that initial prompt.")
+first message, not doing anything yet. A real bug: an earlier version
+of this table had it wrong as `working', which made every fresh
+session appear permanently busy until the first tool use, never
+showing as idle while actually just sitting at that initial prompt.")
 
 (defun corral-claude--command-for (state)
   (format "%s %s" corral-claude--hook-script state))

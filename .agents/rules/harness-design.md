@@ -31,10 +31,9 @@
   real content entirely on a tall terminal window if a full-screen TUI
   pads unused rows with blank lines below its actual status — observed
   directly during the original PoC, not theorized.
-- **Screen-scraping rules must be evidence-based**, same principle as
-  herdr's own (`herdr/CLAUDE.md`, sibling checkout under the workspace
-  root): capture real screen/tail text from the actual running tool
-  and write rules against that, never against another tool's manifest
-  or a guess. A borrowed herdr manifest rule (braille spinner glyph,
-  lowercase permission-request phrasing) matched nothing in the
+- **Screen-scraping rules must be evidence-based**: capture real
+  screen/tail text from the actual running tool and write rules
+  against that, never against another tool's manifest or a guess. A
+  borrowed manifest rule (braille spinner glyph, lowercase
+  permission-request phrasing) matched nothing in the
   actually-installed Antigravity CLI version during the PoC.
