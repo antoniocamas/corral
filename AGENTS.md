@@ -2,8 +2,8 @@
 
 **corral** is an Emacs package that tracks coding-agent sessions
 (Claude Code today, other harnesses later) running in `vterm` buffers,
-and shows them in a side panel color-coded by state: working, waiting
-for input, or idle. Inspired by studying
+and shows them in a side panel color-coded by state: working, blocked
+on input, or idle. Inspired by studying
 [herdr](https://herdr.dev) — a similar tool built as its own standalone
 terminal multiplexer — but corral lives inside Emacs and relies on
 `vterm` already owning the underlying processes, so it never needs to

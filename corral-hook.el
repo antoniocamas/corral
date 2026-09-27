@@ -27,19 +27,111 @@
 (require 'diff)
 (require 'corral-core)
 
+
+;;; Pretty-printing JSON for human review.
+;;
+;; `json-serialize' always produces compact, single-line JSON -- there
+;; is no pretty-print option. Diffing that against a normally-indented,
+;; hand-maintained settings file is unreadable: it looks like the
+;; entire file changed on one giant line. This writes indented JSON
+;; directly from the plist/vector structure instead of going through
+;; `json-serialize' at all for output, which also means the
+;; raw-byte/double-encoding concern documented in
+;; `.agents/rules/json-encoding.md' doesn't apply to this path --
+;; there's a real, normally-decoded Elisp string at every step, not
+;; `json-serialize''s raw-byte return value.
+;;
+;; Objects are plists (keyword keys), arrays are vectors, matching the
+;; same convention used for parsing/merging everywhere else in this
+;; codebase -- see `.agents/rules/json-encoding.md'. Known limitation:
+;; an empty object and JSON null are both represented as Lisp `nil'
+;; and are therefore indistinguishable here (prints as "null" either
+;; way); not worth a workaround since neither corral's own generated
+;; content nor any settings.json seen in practice produces a genuinely
+;; empty object.
+
+(defun corral-hook--json-pretty-string (s)
+  "Quote and escape S for JSON. Only control characters, quotes, and
+backslashes are escaped -- anything else (including non-ASCII text
+like an emoji) is emitted literally, not as a \\uXXXX escape, since
+this is meant to stay readable to a human, matching how such
+characters already look in a hand-edited settings.json."
+  (concat "\""
+          (mapconcat (lambda (c)
+                       (cond
+                        ((eq c ?\") "\\\"")
+                        ((eq c ?\\) "\\\\")
+                        ((eq c ?\n) "\\n")
+                        ((eq c ?\t) "\\t")
+                        ((eq c ?\r) "\\r")
+                        ((< c #x20) (format "\\u%04x" c))
+                        (t (char-to-string c))))
+                     s "")
+          "\""))
+
+(defun corral-hook--json-pretty-value (value indent)
+  "Render VALUE (a plist/vector/string/number/t/:false/nil, the same
+convention `json-parse-string' with :object-type \\='plist
+:array-type \\='array produces) as indented JSON text. INDENT is the
+current indentation level in spaces, of the line VALUE starts on."
+  (cond
+   ((eq value t) "true")
+   ((eq value :false) "false")
+   ((null value) "null")
+   ((stringp value) (corral-hook--json-pretty-string value))
+   ((numberp value) (number-to-string value))
+   ((vectorp value) (corral-hook--json-pretty-array value indent))
+   ((and (consp value) (keywordp (car value)))
+    (corral-hook--json-pretty-object value indent))
+   (t (error "corral-hook--json-pretty-value: unsupported value %S" value))))
+
+(defun corral-hook--json-pretty-object (plist indent)
+  (if (null plist)
+      "{}"
+    (let* ((next-indent (+ indent 2))
+           (pad (make-string next-indent ?\s))
+           (pairs nil)
+           (tail plist))
+      (while tail
+        (push (format "%s%s: %s"
+                      pad
+                      (corral-hook--json-pretty-string
+                       (substring (symbol-name (car tail)) 1))
+                      (corral-hook--json-pretty-value (cadr tail) next-indent))
+              pairs)
+        (setq tail (cddr tail)))
+      (concat "{\n" (mapconcat #'identity (nreverse pairs) ",\n")
+              "\n" (make-string indent ?\s) "}"))))
+
+(defun corral-hook--json-pretty-array (vec indent)
+  (if (zerop (length vec))
+      "[]"
+    (let* ((next-indent (+ indent 2))
+           (pad (make-string next-indent ?\s)))
+      (concat "[\n"
+              (mapconcat (lambda (v) (concat pad (corral-hook--json-pretty-value v next-indent)))
+                         (append vec nil) ",\n")
+              "\n" (make-string indent ?\s) "]"))))
+
+(defun corral-hook-json-pretty (value)
+  "Render VALUE as indented JSON text, terminated by a trailing
+newline like a normally hand-saved file. VALUE uses the plist/array
+convention documented in `.agents/rules/json-encoding.md'."
+  (concat (corral-hook--json-pretty-value value 0) "\n"))
+
 ;;;###autoload
 (defun corral-report (pane-id state)
-  "Report STATE (a string: \"working\"/\"waiting\"/\"idle\") for
+  "Report STATE (a string: \"working\"/\"blocked\"/\"idle\") for
 PANE-ID. Called via `emacsclient --eval' from a hook script (see
 corral-hook.sh) -- this is the one thing every hook-capable harness's
 hook script needs to know how to call."
   (let ((sym (pcase state
                ("working" 'working)
-               ("waiting" 'waiting)
+               ("blocked" 'blocked)
                ("idle" 'idle)
                (_ 'unknown))))
     (corral--set-state pane-id sym)
-    (when (eq sym 'waiting)
+    (when (eq sym 'blocked)
       (corral--notify-attention pane-id)))
   nil)
 

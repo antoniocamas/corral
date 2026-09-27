@@ -56,6 +56,26 @@
         (should (plist-member merged event))
         (should (= 1 (length (plist-get merged event))))))))
 
+(ert-deftest corral-claude-test-session-start-maps-to-idle ()
+  "SessionStart must map to `idle', not `working': right after a
+session starts, Claude Code is sitting at its empty prompt waiting
+for the first message, nothing is happening yet. A real bug: an
+earlier version mapped it to `working', so every fresh session
+appeared permanently busy until the first tool use -- confirmed
+against herdr's own real mapping
+(herdr/src/integration/claude_settings.rs's HOOK_REMOVALS, which lists
+SessionStart's action as \"idle\")."
+  (should (equal (cdr (assoc "SessionStart" corral-claude--event-states)) "idle")))
+
+(ert-deftest corral-claude-test-permission-request-maps-to-blocked ()
+  "PermissionRequest reports `blocked', not `waiting': the state name
+is specifically for \"blocked on you, can't proceed without your
+decision\" -- deliberately not a generic word that could later be
+confused with, say, waiting on a pending background task. Matches
+herdr's own naming (herdr/src/integration/claude_settings.rs's
+HOOK_REMOVALS, which lists PermissionRequest's action as \"blocked\")."
+  (should (equal (cdr (assoc "PermissionRequest" corral-claude--event-states)) "blocked")))
+
 (ert-deftest corral-claude-test-merge-preserves-unrelated-entries ()
   "Entries on a managed event that aren't corral's own are kept
 alongside corral's, not replaced or dropped -- and entries on an

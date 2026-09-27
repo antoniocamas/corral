@@ -41,6 +41,7 @@
 
 (cl-defstruct corral-harness
   id            ; symbol, e.g. 'claude, 'antigravity
+  abbrev        ; short display prefix for the panel, e.g. "cl" for claude
   strategy      ; 'hooks or 'scrape
   installer     ; hooks strategy: function to check/install hook config
   classifier    ; scrape strategy: function (tail-string -> state symbol)
@@ -101,8 +102,14 @@ new vterm session for HARNESS-ID/VARIANT-NAME, typing COMMAND into it."
            (extra-env (list (cons "CORRAL_PANE_ID" pane-id)
                              (cons "CORRAL_SERVER_NAME" server-name)))
            (buffer (corral--vterm-spawn buffer-name dir extra-env)))
-      (corral--register pane-id buffer harness-id variant-name)
-      (corral--set-state pane-id 'working)
+      (corral--register pane-id buffer harness-id variant-name suffix)
+      ;; Genuinely idle at this instant: the shell just started, and
+      ;; `command' hasn't even been typed into it yet (that happens
+      ;; after a short deferred delay, in `corral--vterm-send-command')
+      ;; -- setting `working' here would claim something is happening
+      ;; before it actually is. The real SessionStart hook flips this
+      ;; to `working' once the harness itself actually starts.
+      (corral--set-state pane-id 'idle)
       (corral--vterm-send-command buffer command))))
 
 (defun corral-harness-add-variant (harness-id variant-name command)

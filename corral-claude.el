@@ -19,7 +19,7 @@
 
 ;; Claude Code's own hooks (SessionStart, UserPromptSubmit,
 ;; PreToolUse, PostToolUse, PermissionRequest, Stop, SessionEnd) map
-;; onto working/waiting/idle. `corral-claude-install-hooks' merges
+;; onto working/blocked/idle. `corral-claude-install-hooks' merges
 ;; corral's own entries into settings.json, touching only the events
 ;; it manages and only the entries whose command points at corral's
 ;; own hook script -- any other hooks already in those events (or any
@@ -53,14 +53,23 @@ globally."
   :group 'corral)
 
 (defconst corral-claude--event-states
-  '(("SessionStart" . "working")
+  '(("SessionStart" . "idle")
     ("UserPromptSubmit" . "working")
     ("PreToolUse" . "working")
     ("PostToolUse" . "working")
-    ("PermissionRequest" . "waiting")
+    ("PermissionRequest" . "blocked")
     ("Stop" . "idle")
     ("SessionEnd" . "idle"))
-  "Claude Code hook event name -> corral state it should report.")
+  "Claude Code hook event name -> corral state it should report.
+
+SessionStart maps to `idle', not `working': right after a session
+starts, Claude Code is sitting at its empty prompt waiting for the
+first message, not doing anything yet. Confirmed against herdr's own
+real mapping (herdr/src/integration/claude_settings.rs's
+HOOK_REMOVALS) after a real bug report: an earlier version of this
+table had it wrong as `working', which made every fresh session
+appear permanently busy until the first tool use, never showing as
+idle while actually just sitting at that initial prompt.")
 
 (defun corral-claude--command-for (state)
   (format "%s %s" corral-claude--hook-script state))
@@ -140,23 +149,16 @@ Shows a diff and asks for confirmation before writing anything (see
                      nil))
          (merged-hooks (corral-claude--merge-hooks (plist-get existing :hooks)))
          (new-settings (corral--plist-set existing :hooks merged-hooks))
-         ;; json-serialize's return value is already-encoded raw UTF-8
-         ;; bytes, not a normal decoded Emacs string -- decode it back
-         ;; immediately so every consumer downstream (comparison, the
-         ;; diff buffers, the final file write) deals in ordinary text
-         ;; consistently. Skipping this silently double-encodes any
-         ;; non-ASCII content on write (discovered via an emoji already
-         ;; present in an unrelated existing hook command: it read back
-         ;; correctly, round-tripped through json-serialize as 4 raw
-         ;; bytes instead of 1 character, and got each of those bytes
-         ;; re-encoded as if they were separate codepoints).
-         (new-content (decode-coding-string
-                       (concat (json-serialize new-settings) "\n")
-                       'utf-8)))
+         ;; Pretty-printed, not `json-serialize' -- that always produces
+         ;; compact, single-line JSON, which makes the confirmation
+         ;; diff unreadable against a normally-indented, hand-maintained
+         ;; settings file. See `corral-hook-json-pretty'.
+         (new-content (corral-hook-json-pretty new-settings)))
     (corral-hook-confirm-and-write path new-content)))
 
 (corral-harness-register
  (make-corral-harness :id 'claude
+                       :abbrev "cl"
                        :strategy 'hooks
                        :installer #'corral-claude-install-hooks))
 

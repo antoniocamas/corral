@@ -25,5 +25,19 @@ test passed throughout development; only real, non-ASCII content
 exposed it. Regression test: `corral-claude-test-json-emoji-roundtrip`
 in `test/corral-claude-tests.el`.
 
-If you touch any JSON parse/merge/serialize code path, run
-`test/corral-claude-tests.el` before considering it done.
+**`json-serialize` is not used for corral's own output at all**, for a
+separate reason: it always produces compact, single-line JSON, which
+makes a confirmation diff unreadable against a normally-indented,
+hand-maintained settings file. `corral-hook-json-pretty`
+(`corral-hook.el`) pretty-prints directly from the plist/vector
+structure instead — every settings-file installer should go through
+that, not call `json-serialize` directly. Because its output is a
+normal decoded string from the start, the raw-byte/double-encoding
+concern above doesn't apply to it; it only applies where
+`json-serialize` genuinely is used (nowhere in this codebase's own
+output path currently, but potentially a future harness's installer,
+or anything else that calls it directly).
+
+If you touch any JSON parse/merge/serialize/pretty-print code path,
+run `test/corral-claude-tests.el` and `test/corral-hook-tests.el`
+before considering it done.

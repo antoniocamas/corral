@@ -1,7 +1,7 @@
 # Harness and variant design
 
 - **A harness describes detection only** — hooks vs. screen-scraping,
-  and how to recognize working/waiting/idle. It never describes how to
+  and how to recognize working/blocked/idle. It never describes how to
   launch the tool. `corral-harness` has no command/launch slot.
 - **A variant describes one way to launch** a harness: a plain command
   string, registered via `corral-harness-add-variant`, typically from

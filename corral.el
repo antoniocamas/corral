@@ -25,7 +25,7 @@
 
 ;; corral tracks coding-agent sessions (Claude Code, and later other
 ;; harnesses) running in vterm buffers, and shows them in a side
-;; panel color-coded by state: working, waiting for your input, or
+;; panel color-coded by state: working, blocked on your input, or
 ;; idle. Inspired by studying herdr (https://herdr.dev), a similar
 ;; tool built as its own standalone terminal multiplexer -- corral
 ;; instead lives inside Emacs and relies on vterm already owning the

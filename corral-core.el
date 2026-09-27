@@ -22,7 +22,7 @@
 ;; ...), identified by a pane-id.  This file knows nothing about any
 ;; particular harness, how it's launched, or how its state is
 ;; detected (hooks vs. screen-scraping) -- it only stores
-;; working/waiting/idle and notifies interested parties (the panel,
+;; working/blocked/idle and notifies interested parties (the panel,
 ;; the attention nudge) when that changes.
 
 ;;; Code:
@@ -37,8 +37,11 @@
 (defface corral-state-working '((t :inherit success))
   "Face for sessions actively working.")
 
-(defface corral-state-waiting '((t :inherit warning))
-  "Face for sessions waiting on user input.")
+(defface corral-state-blocked '((t :inherit error))
+  "Face for sessions blocked on user input -- can't proceed without a
+decision from you (e.g. a tool-permission prompt). Red, not just
+orange/warning-colored: this is the state that most needs your
+attention, more urgent than a generic warning.")
 
 (defface corral-state-idle '((t :inherit shadow))
   "Face for idle/done sessions.")
@@ -57,13 +60,16 @@ being called directly, so this file stays independent of any UI.")
   (setq corral--pane-counter (1+ corral--pane-counter))
   (format "corral-%d-%d" (emacs-pid) corral--pane-counter))
 
-(defun corral--register (pane-id buffer harness-id variant-name)
+(defun corral--register (pane-id buffer harness-id variant-name &optional suffix)
   "Track BUFFER under PANE-ID for HARNESS-ID/VARIANT-NAME.
 Initial state is `unknown' until the harness's detection strategy
-reports something real."
+reports something real. SUFFIX, when given, is the session-name
+suffix chosen at launch time (see `corral--do-launch') -- stored
+separately so the panel can build a short label directly instead of
+parsing it back out of the buffer's real name."
   (puthash pane-id
            (list :buffer buffer :harness harness-id :variant variant-name
-                 :state 'unknown :updated-at (current-time))
+                 :suffix suffix :state 'unknown :updated-at (current-time))
            corral--sessions)
   (with-current-buffer buffer
     (setq-local corral--pane-id pane-id)
@@ -79,7 +85,7 @@ reports something real."
     (run-hooks 'corral-session-change-hook)))
 
 (defun corral--set-state (pane-id state)
-  "Set PANE-ID's state to STATE (a symbol: working/waiting/idle).
+  "Set PANE-ID's state to STATE (a symbol: working/blocked/idle).
 A no-op if PANE-ID isn't registered (e.g. its buffer was already
 killed) -- callers don't need to guard against that themselves."
   (let ((session (gethash pane-id corral--sessions)))
@@ -97,7 +103,7 @@ buffer's real name if it's still live, else the pane-id itself."
     (if (buffer-live-p buffer) (buffer-name buffer) pane-id)))
 
 (defun corral--flash-mode-line ()
-  (let ((cookie (face-remap-add-relative 'mode-line 'corral-state-waiting)))
+  (let ((cookie (face-remap-add-relative 'mode-line 'corral-state-blocked)))
     (force-mode-line-update)
     (run-at-time 0.2 nil
                  (lambda ()
