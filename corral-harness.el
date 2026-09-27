@@ -131,5 +131,95 @@ concern."
 Prompts for a directory and a session name (see `corral--do-launch')."
               harness-id (if variant-name (format " (variant %s)" variant-name) "")))))
 
+(defun corral--harness-ids ()
+  "All registered harness ids."
+  (let (ids) (maphash (lambda (id _) (push id ids)) corral--harnesses) ids))
+
+(defun corral--registered-variant-names (harness-id)
+  "Names (strings) of every NAMED variant registered for HARNESS-ID --
+excludes the unnamed default variant, which has no name to match
+against a buffer name in the first place."
+  (let (names)
+    (maphash (lambda (key _)
+               (when (and (eq (car key) harness-id) (cdr key))
+                 (push (cdr key) names)))
+             corral--variants)
+    names))
+
+(defun corral--strip-buffer-name (buffer-name)
+  "BUFFER-NAME with its surrounding *...* removed, if any."
+  (string-trim buffer-name "\\*" "\\*"))
+
+(defun corral--infer-session-info (buffer-name)
+  "Infer (HARNESS-ID VARIANT-NAME . SUFFIX) from BUFFER-NAME's
+`<harness>[-<variant>]-<suffix>' shape, the same one `corral--do-launch'
+builds buffer names from -- or nil if no registered harness id matches
+at all.
+
+Matches HARNESS-ID and VARIANT-NAME against what is actually
+registered, then keeps everything left over as SUFFIX verbatim rather
+than splitting further on every `-' -- a suffix is very often a
+project directory name that contains its own hyphens (e.g.
+\"my-project\"), and blindly splitting on all of them would mangle it."
+  (let ((stripped (corral--strip-buffer-name buffer-name)))
+    (catch 'found
+      (dolist (id (corral--harness-ids))
+        (let ((prefix (concat (symbol-name id) "-")))
+          (when (string-prefix-p prefix stripped)
+            (let ((rest (substring stripped (length prefix))))
+              (dolist (variant (corral--registered-variant-names id))
+                (let ((vprefix (concat variant "-")))
+                  (when (string-prefix-p vprefix rest)
+                    (throw 'found (cl-list* id variant (substring rest (length vprefix)))))))
+              (throw 'found (cl-list* id nil rest))))))
+      nil)))
+
+;;;###autoload
+(defun corral-adopt-buffer (buffer &optional harness-id variant-name suffix)
+  "Re-register BUFFER, a live vterm buffer already running a session
+that `corral--do-launch' started but that corral has since lost track
+of, under HARNESS-ID/VARIANT-NAME/SUFFIX -- all three inferred from
+BUFFER's own name (see `corral--infer-session-info') when called
+interactively, so there is normally nothing to type beyond which
+buffer. Recovering SUFFIX specifically matters for the panel: without
+it, `corral--panel-label' falls back to BUFFER's full raw name instead
+of the short abbreviated label every other session gets.
+
+This is specifically for a session that predates the process-property
+stashing `corral--register' now does at launch time -- e.g. one
+launched before that code existed, then dropped by
+`corral-reload-from-source' with nothing for `corral-recover-sessions'
+to find. It is NOT a general \"attach to any pre-existing terminal\"
+command: BUFFER's process must still carry the CORRAL_PANE_ID
+`corral--do-launch' set in its environment at spawn time, or there is
+nothing authoritative to recover the pane-id from, and this refuses
+rather than invent one -- a wrong pane-id would silently misdirect a
+hook script already running inside that process. Only works where
+`corral--process-environ-value' does (Linux's /proc)."
+  (interactive (list (read-buffer "Adopt buffer: " nil t)))
+  (let* ((buf (get-buffer buffer))
+         (proc (and buf (get-buffer-process buf))))
+    (unless proc
+      (user-error "No live process in buffer `%s'" buffer))
+    (unless harness-id
+      (let ((inferred (corral--infer-session-info (buffer-name buf))))
+        (unless inferred
+          (user-error "Could not infer a harness from buffer name `%s' \
+(stripped to `%s'; known harnesses: %s) -- pass HARNESS-ID explicitly"
+                      (buffer-name buf)
+                      (corral--strip-buffer-name (buffer-name buf))
+                      (mapconcat #'symbol-name (corral--harness-ids) ", ")))
+        (setq harness-id (nth 0 inferred)
+              variant-name (or variant-name (nth 1 inferred))
+              suffix (or suffix (nthcdr 2 inferred)))))
+    (let ((pane-id (corral--process-environ-value (process-id proc) "CORRAL_PANE_ID")))
+      (unless pane-id
+        (user-error "Could not recover CORRAL_PANE_ID from %s's environment -- \
+was it really started by `corral--do-launch'?" buffer))
+      (corral--register pane-id buf harness-id variant-name suffix)
+      (message "corral: adopted %s as pane %s (harness %s%s)"
+                buffer pane-id harness-id
+                (if variant-name (format ", variant %s" variant-name) "")))))
+
 (provide 'corral-harness)
 ;;; corral-harness.el ends here

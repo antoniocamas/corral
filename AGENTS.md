@@ -56,6 +56,7 @@ be one itself.
 
 - `.agents/rules/json-encoding.md` — Read before touching any JSON parse/merge/serialize code path
 - `.agents/rules/harness-design.md` — Read before adding or modifying a harness or its launch variants
+- `.agents/rules/adding-a-harness.md` — Read before adding a new harness: the step-by-step sequence (files, requires, tests, docs, reload/teardown gotchas), and how to diagnose a reload that doesn't seem to work
 - `.agents/rules/live-session-safety.md` — Read before validating any change against a real Emacs session
 - `.agents/rules/testing.md` — Read when writing or running tests
 - `.agents/rules/git-workflow.md`

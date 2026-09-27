@@ -27,6 +27,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'server)
 (require 'face-remap)
 
@@ -66,14 +67,29 @@ Initial state is `unknown' until the harness's detection strategy
 reports something real. SUFFIX, when given, is the session-name
 suffix chosen at launch time (see `corral--do-launch') -- stored
 separately so the panel can build a short label directly instead of
-parsing it back out of the buffer's real name."
+parsing it back out of the buffer's real name.
+
+Also stashes PANE-ID/HARNESS-ID/VARIANT-NAME/SUFFIX as properties on
+BUFFER's process, not just in `corral--sessions' or a buffer-local
+variable -- a process's property list is untouched by `unload-feature'
+\(verified directly: a buffer-local variable's value is NOT, it gets
+cleared the moment its defining file is unloaded\), so this is what
+lets `corral-recover-sessions' reconstruct a session that
+`corral-reload-from-source' wiped out from under a still-running vterm
+buffer."
   (puthash pane-id
            (list :buffer buffer :harness harness-id :variant variant-name
                  :suffix suffix :state 'unknown :updated-at (current-time))
            corral--sessions)
   (with-current-buffer buffer
     (setq-local corral--pane-id pane-id)
-    (add-hook 'kill-buffer-hook #'corral--unregister-current-buffer nil t))
+    (add-hook 'kill-buffer-hook #'corral--unregister-current-buffer nil t)
+    (let ((proc (get-buffer-process buffer)))
+      (when proc
+        (process-put proc 'corral-pane-id pane-id)
+        (process-put proc 'corral-harness harness-id)
+        (process-put proc 'corral-variant variant-name)
+        (process-put proc 'corral-suffix suffix))))
   (run-hooks 'corral-session-change-hook))
 
 (defvar-local corral--pane-id nil
@@ -83,6 +99,53 @@ parsing it back out of the buffer's real name."
   (when corral--pane-id
     (remhash corral--pane-id corral--sessions)
     (run-hooks 'corral-session-change-hook)))
+
+;;;###autoload
+(defun corral-recover-sessions ()
+  "Re-register any live vterm session whose process still carries
+corral's identity properties (see `corral--register') but whose entry
+in `corral--sessions' is gone -- the situation `corral-reload-from-source'
+leaves behind, since `unload-feature' wipes that hash table (and every
+buffer-local variable, including the pane-id one) but has no effect on
+already-running processes or their property lists.
+
+Call this once, right after re-`require'ing corral from source. Each
+recovered session starts back at state `unknown' -- exactly like a
+freshly launched one -- since there is no way to recover the last
+known state, only its identity; a hook-capable harness resyncs on its
+next hook event, a scrape-capable one on its next tick once
+`corral-scrape--sync-timer' notices it and restarts the shared timer."
+  (interactive)
+  (dolist (proc (process-list))
+    (let ((pane-id (process-get proc 'corral-pane-id))
+          (buffer (process-buffer proc)))
+      (when (and pane-id (buffer-live-p buffer)
+                 (not (gethash pane-id corral--sessions)))
+        (corral--register pane-id buffer
+                           (process-get proc 'corral-harness)
+                           (process-get proc 'corral-variant)
+                           (process-get proc 'corral-suffix))))))
+
+(defun corral--process-environ-value (pid var)
+  "Return VAR's value from PID's environment via /proc/PID/environ, or
+nil if unreadable or VAR isn't set.
+
+Linux-only -- /proc doesn't exist elsewhere -- but that's the only
+platform corral has ever run on (see AGENTS.md's Environment). Used to
+recover a session's real pane-id straight from an already-running
+process's environment (see `corral-adopt-buffer' in
+`corral-harness.el'): the pane-id was set once, as CORRAL_PANE_ID, when
+the process was originally spawned by `corral--do-launch', and never
+changes for the life of that process -- so this is authoritative,
+unlike guessing from a buffer name."
+  (let ((file (format "/proc/%d/environ" pid)))
+    (when (file-readable-p file)
+      (with-temp-buffer
+        (insert-file-contents-literally file)
+        (let ((prefix (concat var "=")))
+          (cl-some (lambda (entry) (and (string-prefix-p prefix entry)
+                                        (substring entry (length prefix))))
+                   (split-string (buffer-string) "\0" t)))))))
 
 (defun corral--set-state (pane-id state)
   "Set PANE-ID's state to STATE (a symbol: working/blocked/idle).

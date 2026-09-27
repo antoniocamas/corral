@@ -10,6 +10,11 @@ subdirectory. Package name == file name == `provide` symbol, per file.
   model (working/blocked/idle), `corral-session-change-hook` (the
   panel and other observers hook in here instead of being called
   directly, so this file stays independent of any UI).
+  `corral-recover-sessions` reconstructs a session from a still-live
+  process's stashed identity properties after something (e.g.
+  `corral-reload-from-source`) has wiped `corral--sessions` and every
+  buffer-local variable out from under an otherwise-untouched vterm
+  buffer -- see the "Reload vs. persistence" note below.
 - `corral-panel.el` — hand-rendered side panel (deliberately not
   `tabulated-list-mode`, which forces a header row and fixed-width
   columns that don't fit a narrow, discreet window): two compact
@@ -34,9 +39,52 @@ subdirectory. Package name == file name == `provide` symbol, per file.
 - `corral-hook.sh` — one generic hook script, shared by every
   hook-capable harness; a settings-file installer only needs to point
   at it, never write its own copy.
+- `corral-scrape.el` — generic scrape-strategy plumbing, the
+  scrape-strategy counterpart to `corral-hook.el`: a single shared
+  timer (`corral-scrape--tick`) that scans every tracked session whose
+  harness has `:strategy 'scrape`, started/stopped purely by observing
+  `corral-session-change-hook` rather than explicit calls from
+  `corral--do-launch` or a kill-buffer hook.
+- `corral-antigravity.el` — the Antigravity harness (scrape strategy,
+  since `agy` has no hook system): `corral-antigravity--classify`,
+  ported from a real captured PoC (see
+  `../emacs-herd/antigravity-plan.md`) and pinned to one `agy` version
+  -- must be re-verified against a live session before being trusted
+  further, per `.agents/rules/harness-design.md`'s evidence-based-
+  detection principle.
 - `test/` — ERT tests, kept out of MELPA's default glob on purpose.
 - `examples/setup-corral.el.example` — template user config
   (installation, registering launch variants), kept out of the
   installed package the same way `test/` is. The author's own real
   config living outside this repo (`~/.emacs.d/setup-files/setup-corral.el`)
   follows this same pattern.
+
+## Reload vs. persistence
+
+`corral--sessions` is pure in-memory state, never written to disk --
+restarting Emacs loses it along with the actual tracked processes
+(vterm's child processes die with the Emacs process itself, so there's
+nothing worth persisting across a real restart).
+
+`corral-reload-from-source` (see the devel example above) is a
+different case: it calls `unload-feature` on every `corral-*` symbol to
+pick up uncommitted source changes mid-session, which leaves the vterm
+buffers and their processes running untouched but wipes
+`corral--sessions` *and* every buffer-local variable a reloaded file
+defined -- verified directly, not assumed: a buffer-local variable's
+per-buffer value does NOT survive its defining file being unloaded and
+reloaded, even though the buffer itself is never touched. That rules
+out recovering a session's identity from anything `defvar`/`defvar-local`
+based, including the pane-id variable itself.
+
+What does survive is a live process's own property list -- entirely
+outside any file's `load-history`, so `unload-feature` has no way to
+touch it. `corral--register` therefore also stashes
+pane-id/harness/variant/suffix as process properties (`process-put`),
+and `corral-recover-sessions` walks `(process-list)` afterward to
+re-`corral--register` any live one whose properties aren't yet back in
+`corral--sessions`. Recovered sessions start at state `unknown` -- only
+identity survives, not last-known state -- and resync from there via
+each harness's own detection strategy (next hook event, or next scrape
+tick once `corral-scrape--sync-timer` notices the reconstructed
+session and restarts the shared timer).

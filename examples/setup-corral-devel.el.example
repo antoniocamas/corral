@@ -21,7 +21,10 @@
 ;; re-registers any variants you've added, since reloading resets
 ;; corral's internal harness/variant tables along with everything
 ;; else. Whatever is currently on disk is what gets loaded -- no need
-;; to track which files changed by hand.
+;; to track which files changed by hand. Also calls
+;; `corral-recover-sessions' at the end, so any vterm session already
+;; running (and still alive) reappears in the panel instead of staying
+;; silently untracked.
 
 ;;; Code:
 
@@ -50,13 +53,33 @@
 bypassing the package-vc-installed copy entirely for this session --
 no commit and no package-vc-upgrade needed to test in-progress
 changes. Picks up whatever is currently on disk; no need to track
-which files changed."
+which files changed.
+
+Which features to unload is discovered from Emacs's own `features'
+list by name (`corral' itself, or anything named `corral-*'), not a
+hardcoded list -- so a new file added to the package later (a new
+harness, say) is picked up here automatically, with nothing in this
+function to edit. `copy-sequence' first: `unload-feature' mutates
+`features' as it goes, and walking a list while it's being spliced
+out from under you skips entries.
+
+Cancels `corral-scrape--timer' before unloading `corral-scrape': that
+timer is a real, running Emacs timer object registered globally via
+`run-with-timer', not just a Lisp variable -- unbinding the variable
+(what unloading does) does NOT stop it. Left running, its next tick
+calls the now-undefined `corral-scrape--tick' and errors, repeatedly,
+until Emacs's timer machinery gives up and disables it -- happens for
+real whenever a scrape-strategy session (antigravity) is actually
+running at reload time."
   (interactive)
-  (dolist (feature '(corral corral-claude corral-hook corral-harness
-                     corral-panel corral-vterm corral-core))
-    (when (featurep feature)
-      (unload-feature feature t)))
+  (when (and (boundp 'corral-scrape--timer) corral-scrape--timer)
+    (cancel-timer corral-scrape--timer))
+  (dolist (feature (copy-sequence features))
+    (let ((name (symbol-name feature)))
+      (when (or (equal name "corral") (string-prefix-p "corral-" name))
+        (unload-feature feature t))))
   (let ((load-path (cons "/path/to/your/corral/checkout" load-path)))
-    (require 'corral)))
+    (require 'corral))
+  (corral-recover-sessions))
 
 ;;; setup-corral-devel.el.example ends here

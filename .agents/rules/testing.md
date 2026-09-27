@@ -3,7 +3,7 @@
 ERT. Run in batch from the repo root, one `-l` per test file:
 
 ```sh
-emacs -Q --batch -L . -l test/corral-hook-tests.el -l test/corral-claude-tests.el -f ert-run-tests-batch-and-exit
+emacs -Q --batch -L . -l test/corral-core-tests.el -l test/corral-hook-tests.el -l test/corral-claude-tests.el -l test/corral-scrape-tests.el -l test/corral-antigravity-tests.el -f ert-run-tests-batch-and-exit
 ```
 
 Prefer testing pure functions directly (`corral-claude--merge-hooks`,

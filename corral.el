@@ -49,6 +49,8 @@
 (require 'corral-harness)
 (require 'corral-hook)
 (require 'corral-claude)
+(require 'corral-scrape)
+(require 'corral-antigravity)
 
 (provide 'corral)
 ;;; corral.el ends here
