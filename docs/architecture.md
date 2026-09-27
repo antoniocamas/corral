@@ -29,3 +29,8 @@ subdirectory). Package name == file name == `provide` symbol, per file.
   hook-capable harness; a settings-file installer only needs to point
   at it, never write its own copy.
 - `test/` — ERT tests, kept out of MELPA's default glob on purpose.
+- `examples/setup-corral.el.example` — template user config
+  (installation, registering launch variants), kept out of the
+  installed package the same way `test/` is. The author's own real
+  config living outside this repo (`~/.emacs.d/setup-files/setup-corral.el`)
+  follows this same pattern.

@@ -31,6 +31,7 @@ be one itself.
 - `docs/` — system documents indexed below.
 - `.agents/rules/` — rules indexed below.
 - `test/` — ERT tests.
+- `examples/` — template user config, not part of the installed package.
 
 ## Constraints (bind every task, including read-only ones)
 

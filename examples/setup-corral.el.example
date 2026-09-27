@@ -1,0 +1,62 @@
+;;; setup-corral.el.example --- template config for corral -*- lexical-binding: t; -*-
+
+;; Copy this into your own init (e.g. as setup-corral.el, loaded from
+;; init.el the way you load any other package config) and edit the
+;; placeholders. This file is not loaded by corral itself -- it's a
+;; template, kept out of the installed package (see AGENTS.md's
+;; Repository Structure: examples/ isn't part of the shipped package).
+
+;;; Commentary:
+
+;; M-x corral-show-panel   -- open the side panel
+;; M-x corral-launch-claude -- the default `claude' variant
+;;
+;; Registering a variant (below) auto-generates its own launch
+;; command: corral-launch-claude-<variant-name>. Each prompts for a
+;; directory, then a session-name suffix (pre-filled with a sensible
+;; default), and tracks the resulting vterm buffer in the panel.
+;;
+;; M-x corral-claude-install-hooks merges corral's own hooks into
+;; ~/.claude/settings.json -- shows a diff and asks for confirmation
+;; before writing anything. Not called automatically here on purpose:
+;; it's a real edit to a hand-maintained config file, run it
+;; deliberately when you want it.
+
+;;; Code:
+
+;; --- Installation ---
+;;
+;; The straightforward case: a pushed GitHub/GitLab/Codeberg/sr.ht
+;; remote is recognized automatically.
+(unless (package-installed-p 'corral)
+  (package-vc-install "https://github.com/antoniocamas/corral"))
+
+;; If you're pointing this at a local checkout instead (e.g. while
+;; developing corral itself), package-vc's URL-sniffing heuristic
+;; won't recognize a bare filesystem path, and you must supply the VC
+;; backend explicitly or it fails with "Unknown package to fetch":
+;;
+;;   (package-vc-install "/path/to/your/corral/checkout" nil 'Git)
+;;
+;; Either way, after every new commit to whatever you installed from,
+;; run M-x package-vc-upgrade to pick it up -- package-vc-install
+;; isn't live against a working tree, only against what was committed
+;; as of whenever it (or the upgrade command) last ran.
+
+(require 'corral)
+
+;; --- Launch variants ---
+;;
+;; The default "claude" variant already exists (registered by
+;; corral-claude.el itself). Add your own personal wrapper scripts,
+;; flags, or alternate accounts/models as additional named variants --
+;; corral only needs the literal command string; your wrapper handles
+;; its own environment/auth/flags however it likes.
+;;
+;;   (corral-harness-add-variant 'claude "<variant-name>" "<shell command, with any flags>")
+
+;; Example: a variant that skips permission prompts entirely, useful
+;; for a throwaway/sandboxed project you fully trust.
+(corral-harness-add-variant 'claude "yolo" "claude --dangerously-skip-permissions")
+
+;;; setup-corral.el.example ends here

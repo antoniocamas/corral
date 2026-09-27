@@ -28,6 +28,7 @@
 ;;; Code:
 
 (require 'server)
+(require 'face-remap)
 
 (defgroup corral nil
   "Side panel tracking coding-agent sessions running in vterm buffers."
