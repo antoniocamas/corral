@@ -121,14 +121,30 @@ view out from under someone reading it."
 
 ;;;###autoload
 (defun corral-show-panel ()
-  "Show the corral session panel in a right side window."
+  "Show the corral session panel in a right side window.
+
+The window is marked dedicated and excluded from `other-window'
+cycling -- a plain `display-buffer-in-side-window' call does neither
+by default, which in practice meant `other-window' (`C-x o') could
+land there by surprise, and a plain `switch-to-buffer' (`C-x b') while
+it was selected would happily replace the panel with whatever buffer
+you picked, turning the side window into an ordinary one. Both are
+standard window parameters (`no-other-window', dedicating via
+`set-window-dedicated-p'), not special panel logic -- a dedicated
+window makes `switch-to-buffer' find or create another window instead
+of clobbering this one."
   (interactive)
-  (let ((buf (corral--get-panel-buffer)))
+  (let* ((buf (corral--get-panel-buffer))
+         (window (display-buffer-in-side-window
+                  buf
+                  `((side . right) (slot . 0)
+                    (window-width . ,corral-panel-window-width)
+                    (window-parameters . ((no-other-window . t)
+                                           (no-delete-other-windows . t)))))))
     (with-current-buffer buf
       (corral--panel-render))
-    (display-buffer-in-side-window
-     buf
-     `((side . right) (slot . 0) (window-width . ,corral-panel-window-width)))))
+    (when window
+      (set-window-dedicated-p window t))))
 
 (defun corral--session-at-point ()
   (let ((pane-id (get-text-property (point) 'corral-pane-id)))
