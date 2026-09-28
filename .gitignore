@@ -17,3 +17,7 @@ dist/
 
 # Undo-tree save-files
 *.~undo-tree
+
+# Harness
+.kiro
+.claude

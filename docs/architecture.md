@@ -52,6 +52,18 @@ subdirectory. Package name == file name == `provide` symbol, per file.
   -- must be re-verified against a live session before being trusted
   further, per `.agents/rules/harness-design.md`'s evidence-based-
   detection principle.
+- `corral-kiro.el` — the Kiro CLI harness (scrape strategy). Kiro
+  CLI (`kiro-cli`) does have agent-lifecycle hooks, but they only fire
+  for a named agent config file (not the built-in default a plain
+  `kiro-cli chat` runs) and none of its triggers maps to
+  blocked-on-permission, so this uses screen-scraping like
+  antigravity: `corral-kiro--classify`, ported from herdr's
+  `kiro.toml` manifest. Same caveat as antigravity -- the rules were
+  captured by herdr, not corral, and must be re-verified against a
+  live `kiro-cli` before being trusted further. Deliberately omits
+  kiro.toml's OSC-title/progress working rules: those match terminal
+  escape sequences, not rendered buffer text, and corral's scrape
+  strategy only ever sees the buffer tail.
 - `test/` — ERT tests, kept out of MELPA's default glob on purpose.
 - `examples/setup-corral.el.example` — template user config
   (installation, registering launch variants), kept out of the

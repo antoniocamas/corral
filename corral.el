@@ -51,6 +51,7 @@
 (require 'corral-claude)
 (require 'corral-scrape)
 (require 'corral-antigravity)
+(require 'corral-kiro)
 
 (provide 'corral)
 ;;; corral.el ends here

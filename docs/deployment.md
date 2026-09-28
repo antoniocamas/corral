@@ -31,6 +31,7 @@ or release.
 This still only picks up *committed* changes. To test uncommitted,
 in-progress edits to a local checkout without committing them, use
 `M-x corral-reload-from-source` (defined in
-`examples/setup-corral-devel.el.example`) instead — it reloads every
-`corral-*` feature directly from the working tree for the current
-session, bypassing the package-vc-installed copy entirely.
+`examples/setup-corral-devel.el.example`) instead — it prompts for the
+checkout directory (defaulting to the current buffer's directory) and
+reloads every `corral-*` feature directly from that working tree for
+the current session, bypassing the package-vc-installed copy entirely.

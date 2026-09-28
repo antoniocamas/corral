@@ -15,21 +15,6 @@ the still-running server-side evaluation; recovery needs a `C-g` (or a
 force-kill of the process) at the actual Emacs, not a client-side
 timeout.
 
-Validate against an isolated throwaway daemon first:
-
-```sh
-emacs -Q --daemon=<name> --eval "(progn (add-to-list 'load-path \"<repo>\") (require 'corral))"
-```
-
-A fresh `--daemon=NAME` invocation in a new shell often races something
-on its first attempt and silently no-ops without starting — always
-confirm it actually started before trusting it:
-
-```sh
-emacsclient -s <name> --eval "(+ 1 1)"
-```
-
-Force-kill (`pkill -9 -f "daemon=<name>"`) and remove its stale socket
-freely afterward — it's disposable. Only touch the real session for
-the specific step that genuinely needs the author's live confirmation,
-and only once the change is already verified in isolation.
+Validate in isolation first, via the skill `corral-test`Only touch the
+real session for the step that genuinely needs the author's live
+confirmation, and only once the change is already verified in isolation.

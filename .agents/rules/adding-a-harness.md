@@ -30,14 +30,14 @@ harness *is*, what it isn't) are in `.agents/rules/harness-design.md`
    registers.
 
 4. **Add `test/corral-<name>-tests.el`** — pure classifier/merge-logic
-   tests, no live tool or real vterm buffer needed (see
-   `.agents/rules/testing.md` for the pattern).
+   tests, no live tool or real vterm buffer needed (see the
+   `corral-test` skill, `references/writing-tests.md`, for the pattern).
 
 5. **Update the docs that list files/tests by name** — both of these
    were missed for `antigravity` until asked for separately:
    - `docs/architecture.md` — one bullet describing the new file.
-   - `.agents/rules/testing.md` — add the new test file to the batch
-     `-l` command.
+   - `ai-kit/skills/corral-test/SKILL.md` — add the new test file to
+     the batch `-l` command.
 
 6. **Re-verify scrape rules against the live tool before trusting
    them**, per `harness-design.md`'s evidence-based-detection
@@ -105,8 +105,8 @@ harness *is*, what it isn't) are in `.agents/rules/harness-design.md`
    process, a global hook it added itself), add the matching teardown
    to the reloader at the same time, don't assume unloading is enough.
 
-10. **Compile-clean check + full ERT run** (`.agents/rules/testing.md`)
-    before considering it done.
+10. **Compile-clean check + full ERT run** (skills `corral-compile`
+    and `corral-test`) before considering it done.
 
 11. **Live validation only in an isolated throwaway daemon**
     (`.agents/rules/live-session-safety.md`) — never directly against

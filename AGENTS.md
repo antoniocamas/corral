@@ -58,9 +58,10 @@ be one itself.
 - `.agents/rules/harness-design.md` — Read before adding or modifying a harness or its launch variants
 - `.agents/rules/adding-a-harness.md` — Read before adding a new harness: the step-by-step sequence (files, requires, tests, docs, reload/teardown gotchas), and how to diagnose a reload that doesn't seem to work
 - `.agents/rules/live-session-safety.md` — Read before validating any change against a real Emacs session
-- `.agents/rules/testing.md` — Read when writing or running tests
+- `.agents/rules/testing.md` — the two mandatory pre-done gates (ERT, compile-clean) and which skill owns each
 - `.agents/rules/git-workflow.md`
 
-## Packages
+## Skills
 
-None — single flat package, no child AGENTS.md.
+- `corral-compile/` — byte-compile corral clean; run before a change is done (skill trigger: compile/byte-compile/compiler-warnings)
+- `corral-test/` — run ERT, write a corral test, or validate against a throwaway Emacs daemon (skill trigger: run tests/ERT/write a test/validate against Emacs)

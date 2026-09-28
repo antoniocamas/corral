@@ -13,15 +13,18 @@
 
 ;; M-x corral-show-panel   -- open the side panel
 ;; M-x corral-launch-claude -- the default `claude' variant
+;; M-x corral-launch-kiro   -- the default `kiro-cli chat' variant
 ;;
 ;; M-x corral-reload-from-source -- test in-progress, UNCOMMITTED
-;; changes without committing and without package-vc-upgrade. Reloads
-;; every corral-* feature directly from the working tree (bypassing
-;; the package-vc-installed copy for this session only) and
-;; re-registers any variants you've added, since reloading resets
-;; corral's internal harness/variant tables along with everything
-;; else. Whatever is currently on disk is what gets loaded -- no need
-;; to track which files changed by hand. Also calls
+;; changes without committing and without package-vc-upgrade. Prompts
+;; for the checkout directory (defaulting to the current buffer's
+;; directory, so invoking it while editing a corral file usually needs
+;; only RET), then reloads every corral-* feature directly from that
+;; working tree (bypassing the package-vc-installed copy for this
+;; session only) and re-registers any variants you've added, since
+;; reloading resets corral's internal harness/variant tables along
+;; with everything else. Whatever is currently on disk is what gets
+;; loaded -- no need to track which files changed by hand. Also calls
 ;; `corral-recover-sessions' at the end, so any vterm session already
 ;; running (and still alive) reappears in the panel instead of staying
 ;; silently untracked.
@@ -48,12 +51,18 @@
 
 (require 'corral)
 
-(defun corral-reload-from-source ()
-  "Reload all corral-* features directly from your working tree,
-bypassing the package-vc-installed copy entirely for this session --
-no commit and no package-vc-upgrade needed to test in-progress
-changes. Picks up whatever is currently on disk; no need to track
-which files changed.
+(defun corral-reload-from-source (dev-dir)
+  "Reload all corral-* features directly from DEV-DIR, a working-tree
+checkout, bypassing the package-vc-installed copy entirely for this
+session -- no commit and no package-vc-upgrade needed to test
+in-progress changes. Picks up whatever is currently on disk; no need
+to track which files changed.
+
+Interactively prompts for DEV-DIR, defaulting to the current buffer's
+directory -- so invoking this while editing a corral source file
+usually needs only RET. Errors if DEV-DIR has no corral.el, rather
+than silently falling through to the package-vc-installed copy (which
+would hide a missing new file, e.g. a just-added harness).
 
 Which features to unload is discovered from Emacs's own `features'
 list by name (`corral' itself, or anything named `corral-*'), not a
@@ -71,14 +80,17 @@ calls the now-undefined `corral-scrape--tick' and errors, repeatedly,
 until Emacs's timer machinery gives up and disables it -- happens for
 real whenever a scrape-strategy session (antigravity) is actually
 running at reload time."
-  (interactive)
+  (interactive
+   (list (read-directory-name "Reload corral from checkout: " default-directory nil t)))
+  (unless (file-exists-p (expand-file-name "corral.el" dev-dir))
+    (user-error "corral-reload-from-source: no corral.el in %s" dev-dir))
   (when (and (boundp 'corral-scrape--timer) corral-scrape--timer)
     (cancel-timer corral-scrape--timer))
   (dolist (feature (copy-sequence features))
     (let ((name (symbol-name feature)))
       (when (or (equal name "corral") (string-prefix-p "corral-" name))
         (unload-feature feature t))))
-  (let ((load-path (cons "/path/to/your/corral/checkout" load-path)))
+  (let ((load-path (cons (expand-file-name dev-dir) load-path)))
     (require 'corral))
   (corral-recover-sessions))
 
