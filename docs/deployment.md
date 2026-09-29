@@ -21,12 +21,21 @@ be given explicitly, or it fails with "Unknown package to fetch".
 ## Staying up to date
 
 `package-vc-install` only clones what's committed as of whenever it
-(or `package-vc-upgrade`) last ran — it is never live against a
-working tree or a remote. Both example configs call
-`package-vc-upgrade` on every startup once corral is already
-installed, so a fresh pull + recompile happens automatically instead
-of requiring a manual `M-x package-vc-upgrade` after every new commit
-or release.
+last ran — it is never live against a working tree or a remote. Both
+example configs fast-forward the installed checkout on every startup
+(a `corral--sync-upgrade` helper: `git fetch` + `git merge --ff-only
+origin/main`), so a fresh pull happens automatically instead of
+requiring a manual update after every new commit or release.
+
+They deliberately do **not** use `package-vc-upgrade` for this.
+`package-vc-upgrade` drives an *asynchronous* `vc-pull` whose result is
+swallowed by `with-demoted-errors`, so the config's own `(require
+'corral)` on the next line runs before the pull finishes — loading the
+still-old files. On a fresh daemon this left the installed copy
+silently stale: new commits, or a just-added harness, never appeared,
+with no error to explain why. A synchronous `git` fast-forward
+completes before `require`; `--ff-only` refuses rather than clobbering,
+so any local edits to the checkout are safe.
 
 This still only picks up *committed* changes. To test uncommitted,
 in-progress edits to a local checkout without committing them, use

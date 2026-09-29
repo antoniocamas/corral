@@ -38,15 +38,33 @@
 ;; fails with "Unknown package to fetch".
 ;;
 ;; package-vc-install only clones what's committed as of whenever it
-;; (or package-vc-upgrade) last ran -- it isn't live against the
-;; working tree. Calling package-vc-upgrade on every startup once
-;; installed means a fresh pull + recompile happens automatically
-;; instead of requiring a manual M-x package-vc-upgrade after every new
-;; commit. This still only picks up committed changes -- for testing
+;; last ran -- it isn't live against the working tree. To pick up new
+;; commits automatically on startup, `corral--sync-upgrade' below
+;; fast-forwards the installed checkout.
+;;
+;; It does NOT use `package-vc-upgrade', deliberately: that drives an
+;; *asynchronous* `vc-pull' whose result is swallowed by
+;; `with-demoted-errors', so `(require 'corral)' on the next line runs
+;; before the pull finishes -- loading the still-old files. On a fresh
+;; daemon this left the installed copy silently stale (new commits, or
+;; a just-added harness, never appeared). A synchronous `git fetch' +
+;; `--ff-only' merge completes before `require'; `--ff-only' refuses
+;; rather than clobbering, so local edits are safe.
+;;
+;; This still only picks up committed changes -- for testing
 ;; uncommitted edits, use M-x corral-reload-from-source instead (see
 ;; Commentary above).
+(defun corral--sync-upgrade ()
+  "Fast-forward corral's package-vc checkout synchronously, before load."
+  (let ((dir (ignore-errors
+               (package-vc--checkout-dir (cadr (assq 'corral package-alist))))))
+    (when (and dir (file-directory-p (expand-file-name ".git" dir)))
+      (let ((default-directory dir))
+        (call-process "git" nil nil nil "fetch" "origin")
+        (call-process "git" nil nil nil "merge" "--ff-only" "origin/main")))))
+
 (if (package-installed-p 'corral)
-    (ignore-errors (package-vc-upgrade 'corral))
+    (corral--sync-upgrade)
   (package-vc-install "/path/to/your/corral/checkout" nil 'Git))
 
 (require 'corral)
