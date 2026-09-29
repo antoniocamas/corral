@@ -133,5 +133,59 @@ launch or kill-buffer code."
      (kill-buffer buffer)
      (should (null corral-scrape--timer)))))
 
+(ert-deftest corral-scrape-test-sync-timer-restarts-dead-timer ()
+  "A dead timer left in `corral-scrape--timer' (cancelled, or disabled
+by Emacs after its tick signalled) must be replaced by
+`corral-scrape--sync-timer', not mistaken for a still-running one. The
+old `(unless corral-scrape--timer ...)' guard checked only non-nil, so
+a dead-but-non-nil timer wedged every scrape session forever -- the
+panel kept showing them frozen no matter how often they were
+relaunched or re-adopted."
+  (corral-scrape-test--with-clean-state
+   (let ((buffer (generate-new-buffer " *corral-scrape-test*")))
+     (unwind-protect
+         (progn
+           (corral--register "test-pane-6" buffer 'corral-scrape-test-harness nil)
+           (should (corral-scrape--timer-live-p))
+           ;; Simulate the timer dying out from under the variable
+           ;; (cancel it, but deliberately DON'T nil the variable --
+           ;; exactly the state Emacs leaves after auto-disabling a
+           ;; repeating timer whose function errored).
+           (cancel-timer corral-scrape--timer)
+           (should corral-scrape--timer)            ; variable still non-nil
+           (should-not (corral-scrape--timer-live-p)) ; but timer is dead
+           ;; A later sync (e.g. another session-change) must restart it.
+           (corral-scrape--sync-timer)
+           (should (corral-scrape--timer-live-p)))
+       (when corral-scrape--timer
+         (cancel-timer corral-scrape--timer) (setq corral-scrape--timer nil))
+       (kill-buffer buffer)))))
+
+(ert-deftest corral-scrape-test-tick-isolates-per-session-errors ()
+  "An error scanning one session must not escape the tick (which would
+make Emacs disable the shared timer for every session); the other
+sessions in the same tick must still be classified."
+  (corral-scrape-test--with-clean-state
+   (let ((bad (generate-new-buffer " *corral-scrape-test-bad*"))
+         (good (generate-new-buffer " *corral-scrape-test-good*")))
+     (unwind-protect
+         (cl-letf* ((real-classifier (symbol-function 'corral-scrape-test--classifier))
+                    ((symbol-function 'corral-scrape-test--classifier)
+                     (lambda (tail)
+                       (if (string-match-p "EXPLODE" tail)
+                           (error "boom")
+                         (funcall real-classifier tail)))))
+           (with-current-buffer bad (insert "EXPLODE"))
+           (with-current-buffer good (insert "status: WORKING now"))
+           (corral--register "test-pane-bad" bad 'corral-scrape-test-harness nil)
+           (corral--register "test-pane-good" good 'corral-scrape-test-harness nil)
+           ;; Must not signal despite the bad session erroring.
+           (corral-scrape--tick)
+           ;; The good session was still classified in the same tick.
+           (should (eq (plist-get (gethash "test-pane-good" corral--sessions) :state)
+                       'working)))
+       (kill-buffer bad)
+       (kill-buffer good)))))
+
 (provide 'corral-scrape-tests)
 ;;; corral-scrape-tests.el ends here
