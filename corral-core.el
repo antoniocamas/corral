@@ -58,8 +58,24 @@ removal.  The panel and other observers hook in here instead of
 being called directly, so this file stays independent of any UI.")
 
 (defun corral--new-pane-id ()
-  (setq corral--pane-counter (1+ corral--pane-counter))
-  (format "corral-%d-%d" (emacs-pid) corral--pane-counter))
+  "A pane-id not currently in `corral--sessions'.
+
+Advances `corral--pane-counter' until the formatted id is free, rather
+than trusting the counter to be monotonic across the life of the
+registry. `corral-reload-from-source' re-initialises this `defvar' to
+0 (`unload-feature' then reload), while `corral-recover-sessions'
+re-registers the surviving sessions under their original,
+higher-numbered ids -- so a bare increment would re-mint an id an
+existing session still holds, and `corral--register's `puthash' would
+silently overwrite that session instead of adding a new one (observed:
+a freshly launched session replacing an earlier one in the panel).
+Checking the registry closes that gap whatever reset the counter."
+  (let (id)
+    (while (progn
+             (setq corral--pane-counter (1+ corral--pane-counter))
+             (setq id (format "corral-%d-%d" (emacs-pid) corral--pane-counter))
+             (gethash id corral--sessions)))
+    id))
 
 (defun corral--register (pane-id buffer harness-id variant-name &optional suffix)
   "Track BUFFER under PANE-ID for HARNESS-ID/VARIANT-NAME.
@@ -114,7 +130,23 @@ recovered session starts back at state `unknown' -- exactly like a
 freshly launched one -- since there is no way to recover the last
 known state, only its identity; a hook-capable harness resyncs on its
 next hook event, a scrape-capable one on its next tick once
-`corral-scrape--sync-timer' notices it and restarts the shared timer."
+`corral-scrape--sync-timer' notices it and restarts the shared timer.
+
+Renumbers a stashed pane-id that collides with a DIFFERENT live
+session's: before the collision-safe `corral--new-pane-id', a launch
+after a counter reset could stamp duplicate CORRAL_PANE_IDs into two
+different shells' environments and process properties, where they are
+now baked in for the life of those shells -- the counter fix stops new
+duplicates but cannot un-bake existing ones. Recovering both under the
+one shared id would silently drop or overwrite a session (observed: a
+session vanishing from the panel). So a stashed id already held by
+another live buffer is replaced with a fresh one via
+`corral--new-pane-id', which is also restashed on the process. A hook
+harness inside that process still reports under its OLD env
+CORRAL_PANE_ID, which no longer matches -- a known limitation of
+recovering a mis-stamped process; the scrape harnesses corral uses
+today don't depend on it, and the alternative is losing the session
+entirely."
   (interactive)
   (dolist (proc (process-list))
     (let ((pane-id (process-get proc 'corral-pane-id))
@@ -124,7 +156,19 @@ next hook event, a scrape-capable one on its next tick once
         (corral--register pane-id buffer
                            (process-get proc 'corral-harness)
                            (process-get proc 'corral-variant)
-                           (process-get proc 'corral-suffix))))))
+                           (process-get proc 'corral-suffix)))
+      ;; Stashed id is already taken by a DIFFERENT live buffer: a
+      ;; baked-in duplicate. Give this one a fresh, free id so both
+      ;; survive instead of one clobbering the other.
+      (when (and pane-id (buffer-live-p buffer)
+                 (let ((existing (gethash pane-id corral--sessions)))
+                   (and existing (not (eq (plist-get existing :buffer) buffer)))))
+        (let ((fresh (corral--new-pane-id)))
+          (process-put proc 'corral-pane-id fresh)
+          (corral--register fresh buffer
+                             (process-get proc 'corral-harness)
+                             (process-get proc 'corral-variant)
+                             (process-get proc 'corral-suffix)))))))
 
 (defun corral--process-environ-value (pid var)
   "Return VAR's value from PID's environment via /proc/PID/environ, or

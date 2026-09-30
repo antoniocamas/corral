@@ -113,5 +113,73 @@ gone, not just untracked) is not resurrected into a phantom entry."
     (corral-recover-sessions)
     (should-not (gethash "pane-dead" corral--sessions))))
 
+(ert-deftest corral-core-test-new-pane-id-is-unique-per-call ()
+  "`corral--new-pane-id' hands out a different id each call."
+  (let ((corral--pane-counter 0))
+    (let ((a (corral--new-pane-id))
+          (b (corral--new-pane-id)))
+      (should-not (equal a b)))))
+
+(ert-deftest corral-core-test-new-pane-id-skips-registered-ids ()
+  "`corral--new-pane-id' never returns an id already in
+`corral--sessions', even when the counter has been reset back under
+live sessions -- the `corral-reload-from-source' case, where the
+counter re-initialises to 0 while `corral-recover-sessions' has
+re-registered survivors under their original higher-numbered ids. A
+bare increment would re-mint a live id and `corral--register' would
+silently overwrite that session (a freshly launched session replacing
+an earlier one in the panel)."
+  (corral-core-test--with-fake-session buffer _proc
+    (clrhash corral--sessions)
+    (setq corral--pane-counter 0)
+    ;; Three pre-existing sessions holding ids ...-1, ...-2, ...-3.
+    (let ((id1 (corral--new-pane-id)))
+      (corral--register id1 buffer 'kiro nil "s1"))
+    (let ((id2 (corral--new-pane-id)))
+      (corral--register id2 buffer 'kiro nil "s2"))
+    (let ((id3 (corral--new-pane-id)))
+      (corral--register id3 buffer 'kiro nil "s3"))
+    (should (= (hash-table-count corral--sessions) 3))
+    ;; Reload resets the counter while the three survive.
+    (setq corral--pane-counter 0)
+    ;; The next id must dodge all three, not collide with them.
+    (let ((id4 (corral--new-pane-id)))
+      (should-not (gethash id4 corral--sessions))
+      (corral--register id4 buffer 'kiro nil "s4")
+      (should (= (hash-table-count corral--sessions) 4)))))
+
+(ert-deftest corral-core-test-recover-sessions-renumbers-colliding-stashed-id ()
+  "Two live processes carrying the SAME stashed pane-id (a duplicate
+baked into two shells by a pre-fix launch after a counter reset) must
+recover as TWO sessions, not one clobbering the other. The colliding
+process gets a fresh id via `corral--new-pane-id', restashed on it."
+  (let ((b1 (generate-new-buffer " *corral-core-test-1*"))
+        (b2 (generate-new-buffer " *corral-core-test-2*")))
+    (let ((p1 (start-process "corral-core-test-1" b1 "sleep" "5"))
+          (p2 (start-process "corral-core-test-2" b2 "sleep" "5")))
+      (set-process-query-on-exit-flag p1 nil)
+      (set-process-query-on-exit-flag p2 nil)
+      (unwind-protect
+          (progn
+            (clrhash corral--sessions)
+            (dolist (p (list p1 p2))
+              (process-put p 'corral-pane-id "corral-dup-1")
+              (process-put p 'corral-harness 'claude)
+              (process-put p 'corral-variant nil))
+            (process-put p1 'corral-suffix "first")
+            (process-put p2 'corral-suffix "second")
+            (corral-recover-sessions)
+            ;; Both survive.
+            (should (= (hash-table-count corral--sessions) 2))
+            ;; The two buffers now carry DIFFERENT stashed ids.
+            (should-not (equal (process-get p1 'corral-pane-id)
+                               (process-get p2 'corral-pane-id)))
+            ;; Every session points at a distinct live buffer.
+            (let (buffers)
+              (maphash (lambda (_id s) (push (plist-get s :buffer) buffers)) corral--sessions)
+              (should (= (length (delete-dups (copy-sequence buffers))) 2))))
+        (dolist (p (list p1 p2)) (when (process-live-p p) (delete-process p)))
+        (dolist (b (list b1 b2)) (when (buffer-live-p b) (kill-buffer b)))))))
+
 (provide 'corral-core-tests)
 ;;; corral-core-tests.el ends here

@@ -216,6 +216,14 @@ hook script already running inside that process. Only works where
       (unless pane-id
         (user-error "Could not recover CORRAL_PANE_ID from %s's environment -- \
 was it really started by `corral--do-launch'?" buffer))
+      ;; The env id can collide with a DIFFERENT live session's when a
+      ;; pre-fix launch (before `corral--new-pane-id' became
+      ;; collision-safe) stamped duplicate CORRAL_PANE_IDs into two
+      ;; shells. Adopting under the shared id would overwrite the other
+      ;; session in the panel; hand this one a fresh, free id instead.
+      (let ((existing (gethash pane-id corral--sessions)))
+        (when (and existing (not (eq (plist-get existing :buffer) buf)))
+          (setq pane-id (corral--new-pane-id))))
       (corral--register pane-id buf harness-id variant-name suffix)
       (message "corral: adopted %s as pane %s (harness %s%s)"
                 buffer pane-id harness-id
