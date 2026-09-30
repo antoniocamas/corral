@@ -36,3 +36,20 @@ string. A validation form must **return** what it wants seen.
 Only touch the real session for a step that genuinely needs the
 author's live confirmation, and only after the change is verified in
 isolation here.
+
+## Two different needs: verify in isolation vs. diagnose live
+
+The daemon above **verifies a change** before it lands. A separate,
+rarer need is **diagnosing a session that misbehaves in the live
+Emacs** when the code on disk looks correct — e.g. scrape tracking has
+frozen. Isolation cannot answer that: the fault is in the running
+session's state (is `corral-scrape--timer` actually live in
+`timer-list`, are the load-time hooks on `corral-session-change-hook`,
+does each session's recorded `:state` match a fresh classify), not in
+the source.
+
+Prefer to make such a break impossible to miss in isolation instead —
+`corral-scrape-test-wiring-invariants-hold-after-register` asserts the
+timer-and-hook wiring so a regression fails ERT, not a live session.
+When a live look is genuinely unavoidable, it is bound by
+`.agents/rules/live-session-safety.md`.

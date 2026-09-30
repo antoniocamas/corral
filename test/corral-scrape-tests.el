@@ -187,5 +187,24 @@ sessions in the same tick must still be classified."
        (kill-buffer bad)
        (kill-buffer good)))))
 
+(ert-deftest corral-scrape-test-wiring-invariants-hold-after-register ()
+  "The system-level wiring the live probe checked, asserted here so it
+can't silently regress: `corral-scrape--sync-timer' is actually on
+`corral-session-change-hook' (the top-level `add-hook' at load time
+ran), and registering a scrape session leaves a GENUINELY LIVE timer
+\(in `timer-list'), not merely a non-nil variable. These are the
+invariants that, when broken in a live session, froze the panel while
+every unit test still passed."
+  (corral-scrape-test--with-clean-state
+   (let ((buffer (generate-new-buffer " *corral-scrape-test*")))
+     (unwind-protect
+         (progn
+           (should (memq 'corral-scrape--sync-timer corral-session-change-hook))
+           (corral--register "test-pane-7" buffer 'corral-scrape-test-harness nil)
+           ;; A non-nil variable is not enough -- it must be scheduled.
+           (should corral-scrape--timer)
+           (should (corral-scrape--timer-live-p)))
+       (kill-buffer buffer)))))
+
 (provide 'corral-scrape-tests)
 ;;; corral-scrape-tests.el ends here
