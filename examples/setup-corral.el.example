@@ -75,4 +75,39 @@
 ;; for a throwaway/sandboxed project you fully trust.
 (corral-harness-add-variant 'claude "yolo" "claude --dangerously-skip-permissions")
 
+;; --- Switching between sessions by attention ---
+;;
+;; `corral-switch-to-attention' prompts (via `completing-read') for a
+;; session to switch to, candidates ordered by attention: blocked
+;; (needs input) first, then idle, then working; newest within a tier.
+;; The current session is excluded and the most-urgent remaining one
+;; is the default, so a bare RET jumps straight there; type to filter,
+;; or move through matches, exactly as your completion UI lets you for
+;; `C-x b'. It ships unbound -- bind it yourself.
+;;
+;; corral calls plain `completing-read' and nothing more, so the
+;; type-to-filter / cycle-to-select feel is whatever your own
+;; completion setup provides. Plain `ido-mode' is NOT enough: it does
+;; not route generic `completing-read' through ido, so you would get
+;; the default *Completions* buffer. To get the ido feel, enable a
+;; framework that installs `completing-read-function' -- e.g. the
+;; `ido-completing-read+' package via `(ido-ubiquitous-mode 1)', or
+;; `fido-vertical-mode', or vertico. That is a global choice for your
+;; init, not corral's to make.
+;;
+;; The catch: these buffers run in vterm, which forwards almost every
+;; key straight to the agent. A global binding is swallowed there and
+;; never reaches Emacs -- so the key must ALSO be in
+;; `vterm-keymap-exceptions', or you can't invoke it FROM an agent
+;; buffer (the whole point). Adjust the chord to taste; whatever you
+;; pick, add it to the exceptions too.
+;;
+;; Also mind mode-local shadows: a global binding loses to any major
+;; mode that binds the same key. `C-c SPC', for instance, is
+;; `comint-accumulate' in shell/comint buffers and would do nothing
+;; there. `C-c C-SPC' is free in the modes corral is used alongside.
+(global-set-key (kbd "C-c C-SPC") #'corral-switch-to-attention)
+(with-eval-after-load 'vterm
+  (add-to-list 'vterm-keymap-exceptions "C-c C-SPC"))
+
 ;;; setup-corral.el.example ends here

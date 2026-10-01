@@ -181,5 +181,151 @@ process gets a fresh id via `corral--new-pane-id', restashed on it."
         (dolist (p (list p1 p2)) (when (process-live-p p) (delete-process p)))
         (dolist (b (list b1 b2)) (when (buffer-live-p b) (kill-buffer b)))))))
 
+;;; Attention-ordered switching
+
+;; These exercise the ordering behind `corral-switch-to-attention':
+;; the sort (blocked -> idle/unknown -> working, newest-first within a
+;; tier), the candidate list it builds, current-session exclusion, the
+;; duplicate-name guard, and the no-other-session error. The command's
+;; `completing-read' call is stubbed -- the completion UI is not
+;; corral's code to test.
+
+(defmacro corral-core-test--with-clean-registry (&rest body)
+  "Run BODY against a freshly emptied session registry, restoring
+nothing -- each test starts from a known-empty state. Uses real
+subprocess-backed buffers so `buffer-live-p' and the process-stashing
+in `corral--register' behave as in production; all are killed on exit."
+  (declare (indent 0))
+  `(let ((bufs nil) (procs nil))
+     (clrhash corral--sessions)
+     (unwind-protect
+         (cl-flet ((mk (name)
+                     (let* ((b (generate-new-buffer (format " *corral-attn-%s*" name)))
+                            (p (start-process (format "corral-attn-%s" name) b "sleep" "30")))
+                       (set-process-query-on-exit-flag p nil)
+                       (push b bufs) (push p procs)
+                       b)))
+           ,@body)
+       (dolist (p procs) (when (process-live-p p) (delete-process p)))
+       (dolist (b bufs) (when (buffer-live-p b) (kill-buffer b))))))
+
+(defun corral-core-test--register-with-state (pane-id buffer state &optional updated-at)
+  "Register PANE-ID/BUFFER and force its STATE and (optionally) its
+`:updated-at', bypassing `current-time' so tests can pin an explicit
+ordering within a tier."
+  (corral--register pane-id buffer 'claude nil pane-id)
+  (corral--set-state pane-id state)
+  (when updated-at
+    (let ((s (gethash pane-id corral--sessions)))
+      (plist-put s :updated-at updated-at)
+      (puthash pane-id s corral--sessions))))
+
+(ert-deftest corral-core-test-attention-orders-by-priority ()
+  "Sorted pane-ids are blocked first, then idle, then working."
+  (corral-core-test--with-clean-registry
+    (corral-core-test--register-with-state "w" (mk "w") 'working)
+    (corral-core-test--register-with-state "i" (mk "i") 'idle)
+    (corral-core-test--register-with-state "b" (mk "b") 'blocked)
+    (should (equal (corral--attention-sorted-pane-ids) '("b" "i" "w")))))
+
+(ert-deftest corral-core-test-attention-unknown-ranks-as-idle ()
+  "An `unknown' session sorts in the idle tier, not after working."
+  (corral-core-test--with-clean-registry
+    (corral-core-test--register-with-state "w" (mk "w") 'working)
+    (corral-core-test--register-with-state "u" (mk "u") 'unknown)
+    (corral-core-test--register-with-state "b" (mk "b") 'blocked)
+    ;; unknown ('u') must come before working ('w').
+    (should (equal (corral--attention-sorted-pane-ids) '("b" "u" "w")))))
+
+(ert-deftest corral-core-test-attention-newest-first-within-tier ()
+  "Within one tier, the most recently updated session comes first --
+freshest context in mind."
+  (corral-core-test--with-clean-registry
+    ;; Two blocked sessions; 'new' updated after 'old'.
+    (corral-core-test--register-with-state "old" (mk "old") 'blocked '(100 0))
+    (corral-core-test--register-with-state "new" (mk "new") 'blocked '(200 0))
+    (should (equal (corral--attention-sorted-pane-ids) '("new" "old")))))
+
+(ert-deftest corral-core-test-attention-excludes-dead-buffers ()
+  "A session whose buffer was killed is not in the order."
+  (corral-core-test--with-clean-registry
+    (let ((live (mk "live"))
+          (dead (mk "dead")))
+      (corral-core-test--register-with-state "live" live 'blocked)
+      (corral-core-test--register-with-state "dead" dead 'blocked)
+      (kill-buffer dead)
+      (should (equal (corral--attention-sorted-pane-ids) '("live"))))))
+
+(ert-deftest corral-core-test-attention-candidates-are-name-paneid-in-order ()
+  "`corral--attention-candidates' maps buffer name -> pane-id, in
+attention order."
+  (corral-core-test--with-clean-registry
+    (let ((bb (mk "b")) (ii (mk "i")))
+      (corral-core-test--register-with-state "pb" bb 'blocked '(200 0))
+      (corral-core-test--register-with-state "pi" ii 'idle '(100 0))
+      (should (equal (corral--attention-candidates)
+                     (list (cons (buffer-name bb) "pb")
+                           (cons (buffer-name ii) "pi")))))))
+
+(ert-deftest corral-core-test-attention-candidates-disambiguate-duplicate-names ()
+  "Two sessions whose buffers somehow share a name still yield two
+distinct candidates -- the collision is broken with the pane-id."
+  (corral-core-test--with-clean-registry
+    (let ((b1 (mk "dup1")) (b2 (mk "dup2")))
+      ;; Force identical buffer names (generate-new-buffer won't, so
+      ;; stub buffer-name to collide and prove the guard fires).
+      (corral-core-test--register-with-state "p1" b1 'blocked '(200 0))
+      (corral-core-test--register-with-state "p2" b2 'blocked '(100 0))
+      (cl-letf (((symbol-function 'buffer-name)
+                 (lambda (&optional _buf) "*same*")))
+        (let ((cands (corral--attention-candidates)))
+          (should (= (length cands) 2))
+          ;; Both pane-ids present, names distinct.
+          (should (equal (sort (mapcar #'cdr cands) #'string<) '("p1" "p2")))
+          (should (= (length (delete-dups (mapcar #'car cands))) 2)))))))
+
+(ert-deftest corral-core-test-switch-to-attention-excludes-current-and-focuses ()
+  "`corral-switch-to-attention' omits the current session from the
+candidates, defaults to the most-urgent remaining one, and focuses the
+chosen session in place. `completing-read' is stubbed to take the
+default; `corral--attention-focus' is stubbed to just record the id."
+  (corral-core-test--with-clean-registry
+    (let ((bb (mk "b")) (ii (mk "i")) (ww (mk "w")) focused prompted-names)
+      (corral-core-test--register-with-state "pb" bb 'blocked '(300 0))
+      (corral-core-test--register-with-state "pi" ii 'idle '(200 0))
+      (corral-core-test--register-with-state "pw" ww 'working '(100 0))
+      (cl-letf (((symbol-function 'completing-read)
+                 (lambda (_prompt collection &rest _)
+                   (setq prompted-names (copy-sequence collection))
+                   ;; Emulate a bare RET: take the default (first).
+                   (car collection)))
+                ((symbol-function 'corral--attention-focus)
+                 (lambda (pane-id) (setq focused pane-id) pane-id)))
+        ;; Standing in the blocked session: it must be excluded, so the
+        ;; default becomes idle "pi" (next most urgent), and that is
+        ;; what gets focused.
+        (with-current-buffer bb
+          (corral-switch-to-attention))
+        (should (equal focused "pi"))
+        ;; The current (blocked) session's buffer name is not offered.
+        (should-not (member (buffer-name bb) prompted-names))
+        ;; The two others are, idle before working.
+        (should (equal prompted-names
+                       (list (buffer-name ii) (buffer-name ww))))))))
+
+(ert-deftest corral-core-test-switch-to-attention-errors-when-alone ()
+  "With no OTHER session than the current one, switching is a
+`user-error', not a crash."
+  (corral-core-test--with-clean-registry
+    (let ((only (mk "only")))
+      (corral-core-test--register-with-state "p-only" only 'idle)
+      (with-current-buffer only
+        (should-error (corral-switch-to-attention) :type 'user-error)))))
+
+(ert-deftest corral-core-test-switch-to-attention-errors-with-no-sessions ()
+  "With no sessions at all, switching is a `user-error'."
+  (corral-core-test--with-clean-registry
+    (should-error (corral-switch-to-attention) :type 'user-error)))
+
 (provide 'corral-core-tests)
 ;;; corral-core-tests.el ends here

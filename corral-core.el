@@ -242,5 +242,131 @@ back to this Emacs"))
         (expand-file-name name)
       name)))
 
+;;; Attention-ordered session switching
+
+;; Switch to a tracked session chosen from a `completing-read' prompt,
+;; candidates ordered by attention -- blocked first (needs your
+;; input), then idle/unknown, then working; newest within a tier, its
+;; context freshest in your mind. The current session is excluded and
+;; the most-urgent remaining one is the default, so a bare RET jumps
+;; straight there.
+;;
+;; Deliberately plain `completing-read', NOT any specific framework:
+;; the type-to-filter / cycle-to-select feel is whatever the user's
+;; own completion setup (ido, fido, vertico, ...) already gives every
+;; other `completing-read', so corral stays framework-agnostic. (The
+;; author's own init routes it through ido via `ido-completing-read+';
+;; nothing here depends on that.)
+
+(defcustom corral-attention-order '(blocked idle working)
+  "Priority tiers for `corral-switch-to-attention', highest attention first.
+A session's state is ranked by its position in this list. `unknown'
+\(a freshly launched or just-recovered session that hasn't reported a
+real state yet\) is treated the same as `idle'. Any state not present
+here sorts after every listed one."
+  :type '(repeat symbol)
+  :group 'corral)
+
+(defun corral--attention-rank (state)
+  "Numeric priority for STATE per `corral-attention-order' (lower is
+higher attention). `unknown' ranks as `idle'; an unlisted state sorts
+after every listed one."
+  (let* ((s (if (eq state 'unknown) 'idle state))
+         (pos (cl-position s corral-attention-order)))
+    (or pos (length corral-attention-order))))
+
+(defun corral--attention-live-sessions ()
+  "Alist of (PANE-ID . SESSION) for every tracked session whose buffer
+is still live."
+  (let (out)
+    (maphash (lambda (id session)
+               (when (buffer-live-p (plist-get session :buffer))
+                 (push (cons id session) out)))
+             corral--sessions)
+    out))
+
+(defun corral--attention-sorted-pane-ids ()
+  "Live tracked pane-ids in attention order.
+
+Sort key: primary by `corral--attention-rank' (blocked, then
+idle/unknown, then working); secondary by `:updated-at' NEWEST first
+within a tier -- the session that most recently entered that state,
+whose context is freshest in your mind, comes up first."
+  (mapcar
+   #'car
+   (sort (corral--attention-live-sessions)
+         (lambda (a b)
+           (let ((ra (corral--attention-rank (plist-get (cdr a) :state)))
+                 (rb (corral--attention-rank (plist-get (cdr b) :state))))
+             (if (/= ra rb)
+                 (< ra rb)
+               ;; Same tier: newest :updated-at first.
+               (time-less-p (plist-get (cdr b) :updated-at)
+                            (plist-get (cdr a) :updated-at))))))))
+
+(defun corral--attention-focus (pane-id)
+  "Switch to the buffer of session PANE-ID, in place, and return PANE-ID.
+Reuses the currently selected window rather than splitting or popping
+a new one -- like `switch-to-buffer', not `display-buffer' (whose
+default pops a second window and mangles the layout). Deliberately NOT
+the panel's `display-buffer'-based `corral-switch-to-session': that
+opens a session FROM the dedicated side window, where reusing the
+window is neither possible nor wanted."
+  (let* ((session (gethash pane-id corral--sessions))
+         (buffer (and session (plist-get session :buffer))))
+    (when (buffer-live-p buffer)
+      (pop-to-buffer-same-window buffer)
+      pane-id)))
+
+(defun corral--attention-candidates ()
+  "Alist of (BUFFER-NAME . PANE-ID) for every live tracked session, in
+attention order (see `corral--attention-sorted-pane-ids'). Buffer name
+is the key because it is what the user types to filter; a duplicate
+name is disambiguated with the pane-id so no candidate is ever lost to
+a name collision."
+  (let (seen out)
+    (dolist (pane-id (corral--attention-sorted-pane-ids))
+      (let* ((session (gethash pane-id corral--sessions))
+             (buffer (plist-get session :buffer))
+             (name (buffer-name buffer)))
+        (when (member name seen)
+          (setq name (format "%s [%s]" name pane-id)))
+        (push name seen)
+        (push (cons name pane-id) out)))
+    (nreverse out)))
+
+;;;###autoload
+(defun corral-switch-to-attention ()
+  "Switch to a tracked session chosen from a completion prompt.
+Candidates are ordered by attention -- blocked first, then
+idle/unknown, then working; newest within a tier -- and annotated with
+their state. The session you are currently in is excluded, and the
+most-urgent remaining one is the default, so pressing RET with no
+input jumps straight there. Switches in place (reuses the current
+window).
+
+Uses plain `completing-read': the type-to-filter and cycle keys are
+whatever your own completion UI provides, exactly as for `C-x b'."
+  (interactive)
+  (let* ((all (corral--attention-candidates))
+         ;; Drop the current buffer's session so we always move.
+         (candidates (seq-remove (lambda (c) (equal (cdr c) corral--pane-id)) all)))
+    (unless candidates
+      (user-error "No other corral session to switch to"))
+    (let* ((names (mapcar #'car candidates))
+           (completion-extra-properties
+            (list :annotation-function
+                  (lambda (name)
+                    (let* ((pane-id (cdr (assoc name candidates)))
+                           (session (and pane-id (gethash pane-id corral--sessions)))
+                           (state (and session (plist-get session :state))))
+                      (if state (format "  %s" state) "")))))
+           (choice (completing-read
+                    (format "Switch to session (default %s): " (car names))
+                    names nil t nil nil (car names)))
+           (pane-id (cdr (assoc choice candidates))))
+      (when pane-id
+        (corral--attention-focus pane-id)))))
+
 (provide 'corral-core)
 ;;; corral-core.el ends here

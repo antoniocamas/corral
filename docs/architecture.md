@@ -15,6 +15,11 @@ subdirectory. Package name == file name == `provide` symbol, per file.
   `corral-reload-from-source`) has wiped `corral--sessions` and every
   buffer-local variable out from under an otherwise-untouched vterm
   buffer -- see the "Reload vs. persistence" note below.
+  Also `corral-switch-to-attention`, ordering candidates by attention
+  (`corral-attention-order`). Plain `completing-read` on purpose,
+  keeping this file UI-agnostic like the rest of core. Lives here, not
+  the panel: it reads only the registry and switches in place with
+  `pop-to-buffer-same-window`, needing no panel window open.
 - `corral-panel.el` — hand-rendered side panel (deliberately not
   `tabulated-list-mode`, which forces a header row and fixed-width
   columns that don't fit a narrow, discreet window): two compact
