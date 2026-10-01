@@ -24,7 +24,14 @@ subdirectory. Package name == file name == `provide` symbol, per file.
   `tabulated-list-mode`, which forces a header row and fixed-width
   columns that don't fit a narrow, discreet window): two compact
   lines per session, abbreviated label + colored state, elapsed time
-  underneath. `corral-show-panel`, `corral-rename-session`,
+  underneath. A left-gutter marker (`corral-panel-visible-marker`) and
+  a focused-label face (`corral-panel-focused`) flag visible and
+  selected-window sessions. Because window changes (split, switch,
+  select) never run `corral-session-change-hook`, the refresh is also
+  driven off `window-configuration-change-hook` and
+  `window-selection-change-functions` so those markers stay live; the
+  refresh is panel-only and touches no window configuration, so there
+  is no feedback loop. `corral-show-panel`, `corral-rename-session`,
   `corral-switch-to-session`.
 - `corral-vterm.el` — vterm glue: `corral--vterm-spawn`,
   `corral--vterm-send-command`, `corral--buffer-tail` (character-budget

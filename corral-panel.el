@@ -39,6 +39,21 @@
   "Width of the side window `corral-show-panel' opens. Sized for the
 compact two-line entries this buffer renders, not a table.")
 
+(defcustom corral-panel-visible-marker ">"
+  "String shown in the panel's left gutter for a session whose buffer
+is currently visible in some window (on any visible frame). A session
+whose buffer is not on screen gets a blank gutter of the same width,
+so labels stay aligned. Keep it one character wide for that alignment."
+  :type 'string
+  :group 'corral)
+
+(defface corral-panel-focused '((t :inherit ansi-color-inverse))
+  "Face for the label of the session whose buffer is in the selected
+window -- the one you are focused on right now, as opposed to merely
+visible (which the gutter marker shows). Orthogonal to the
+working/blocked/idle state colour, which stays on the state word."
+  :group 'corral)
+
 (define-derived-mode corral-panel-mode special-mode "Corral"
   "Major mode for the corral session panel.")
 
@@ -75,20 +90,45 @@ than through `corral--do-launch')."
 (defun corral--panel-render ()
   "Redraw the whole panel buffer from `corral--sessions'. Callers
 handle preserving point/scroll position -- this always starts fresh
-at `point-min'."
-  (let ((inhibit-read-only t)
-        pane-ids)
+at `point-min'.
+
+Each row's left gutter shows `corral-panel-visible-marker' when the
+session's buffer is visible in some window (any visible frame), a
+blank of the same width otherwise, so labels stay aligned. The one
+session whose buffer is in the selected window -- the one you are
+actually focused on -- additionally gets its label in
+`corral-panel-focused'. Visibility/focus are read fresh here from the
+window state, so a bare window rearrangement (which never touches
+`corral--sessions') still updates the panel once `corral--refresh-panel'
+is re-run from a window-change hook."
+  (let* ((inhibit-read-only t)
+         (gutter-width (max 1 (string-width corral-panel-visible-marker)))
+         (blank-gutter (make-string gutter-width ?\s))
+         ;; The buffer of the selected window is the focused one -- nil
+         ;; when the panel itself or the minibuffer is selected, which
+         ;; correctly leaves no row highlighted.
+         (focused-buffer (window-buffer (selected-window)))
+         pane-ids)
     (maphash (lambda (id _) (push id pane-ids)) corral--sessions)
     (setq pane-ids (nreverse pane-ids))
     (erase-buffer)
     (dolist (pane-id pane-ids)
       (let* ((session (gethash pane-id corral--sessions))
              (state (plist-get session :state))
+             (buffer (plist-get session :buffer))
              (label (corral--panel-label session))
              (elapsed (corral--format-elapsed (plist-get session :updated-at)))
+             ;; `get-buffer-window' with ALL-FRAMES t spans every live
+             ;; frame; a buffer shown anywhere on screen counts.
+             (visible (and (buffer-live-p buffer)
+                           (get-buffer-window buffer t)))
+             (focused (and (buffer-live-p buffer) (eq buffer focused-buffer)))
+             (gutter (if visible corral-panel-visible-marker blank-gutter))
              (start (point)))
-        (insert label "  " (propertize (symbol-name state) 'face (corral--state-face state)) "\n")
-        (insert (propertize (concat "  " elapsed) 'face 'shadow) "\n\n")
+        (insert gutter " "
+                (if focused (propertize label 'face 'corral-panel-focused) label)
+                "  " (propertize (symbol-name state) 'face (corral--state-face state)) "\n")
+        (insert (propertize (concat blank-gutter " " elapsed) 'face 'shadow) "\n\n")
         (put-text-property start (point) 'corral-pane-id pane-id)))
     (goto-char (point-min))))
 
@@ -118,6 +158,25 @@ view out from under someone reading it."
             (set-window-start win old-window-start t)))))))
 
 (add-hook 'corral-session-change-hook #'corral--refresh-panel)
+
+;; Visibility and focus can change with no session-state change at all
+;; -- splitting a window, switching a buffer, selecting another window.
+;; None of those run `corral-session-change-hook', so without this the
+;; gutter marker and focus highlight would go stale until the next real
+;; state change. `window-selection-change-functions' (Emacs 27+) covers
+;; a plain focus move between existing windows, which
+;; `window-configuration-change-hook' alone does not; both just re-run
+;; the cheap, panel-only refresh (it early-returns when no panel exists
+;; and never touches window configuration, so there is no feedback
+;; loop). The functions take an argument; `corral--refresh-panel' does
+;; not, so wrap it.
+(defun corral--refresh-panel-on-window-change (&rest _)
+  "Window-change-hook adapter for `corral--refresh-panel'."
+  (corral--refresh-panel))
+
+(add-hook 'window-configuration-change-hook #'corral--refresh-panel-on-window-change)
+(when (boundp 'window-selection-change-functions)
+  (add-hook 'window-selection-change-functions #'corral--refresh-panel-on-window-change))
 
 ;;;###autoload
 (defun corral-show-panel ()
