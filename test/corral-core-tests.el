@@ -327,5 +327,37 @@ default; `corral--attention-focus' is stubbed to just record the id."
   (corral-core-test--with-clean-registry
     (should-error (corral-switch-to-attention) :type 'user-error)))
 
+;;; Session minor mode
+
+(ert-deftest corral-core-test-session-mode-auto-enabled-on-register ()
+  "`corral--register' turns on the buffer-local `corral-session-mode'
+in the session buffer."
+  (corral-core-test--with-clean-registry
+    (let ((b (mk "p1")))
+      (corral-core-test--register-with-state "p1" b 'idle)
+      (with-current-buffer b
+        (should corral-session-mode)
+        ;; Buffer-local, not global.
+        (should (local-variable-p 'corral-session-mode))))))
+
+(ert-deftest corral-core-test-session-mode-not-global ()
+  "`corral-session-mode' is off in an unrelated buffer -- it is
+buffer-local, enabled only where corral turns it on."
+  (corral-core-test--with-clean-registry
+    (let ((b (mk "p1")))
+      (corral-core-test--register-with-state "p1" b 'idle))
+    (with-temp-buffer
+      (should-not corral-session-mode))))
+
+(ert-deftest corral-core-test-session-mode-binds-the-two-commands ()
+  "The mode map binds `corral-switch-to-attention' and
+`corral-show-panel'."
+  (corral-core-test--with-clean-registry
+    (let ((b (mk "p1")))
+      (corral-core-test--register-with-state "p1" b 'idle)
+      (with-current-buffer b
+        (should (eq (key-binding (kbd "C-c C-SPC")) 'corral-switch-to-attention))
+        (should (eq (key-binding (kbd "C-c p")) 'corral-show-panel))))))
+
 (provide 'corral-core-tests)
 ;;; corral-core-tests.el ends here

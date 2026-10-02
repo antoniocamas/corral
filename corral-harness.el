@@ -129,7 +129,10 @@ concern."
         (corral--do-launch harness-id variant-name command))
       (format "Launch a %s session%s, tracked in the corral panel.
 Prompts for a directory and a session name (see `corral--do-launch')."
-              harness-id (if variant-name (format " (variant %s)" variant-name) "")))))
+              harness-id (if variant-name (format " (variant %s)" variant-name) ""))))
+  ;; Keep the launch keymap's vanilla keys in sync: a newly registered
+  ;; harness/variant may have just created the launcher this map binds.
+  (corral--rebuild-launch-map))
 
 (defun corral--harness-ids ()
   "All registered harness ids."
@@ -228,6 +231,96 @@ was it really started by `corral--do-launch'?" buffer))
       (message "corral: adopted %s as pane %s (harness %s%s)"
                 buffer pane-id harness-id
                 (if variant-name (format ", variant %s" variant-name) "")))))
+
+;;; Launching: dispatcher + auto-generated prefix keymap
+
+;; Two ways to launch, both over the SAME runtime-registered variant
+;; table (`corral--variants'), so a variant added from user config
+;; appears in both with nothing to wire up per variant:
+;;
+;; - `corral-launch': a `completing-read' dispatcher over EVERY
+;;   registered variant (vanilla and named -- claude, claude-zai,
+;;   kiro-mcp, ...). One command, reaches everything.
+;; - `corral-launch-map': a prefix keymap with a direct key per harness
+;;   for its VANILLA (unnamed) launcher, plus `l' for the dispatcher.
+;;   Keys are generated from the registered harnesses, not hardcoded,
+;;   so a harness added later gets a key automatically (consistent with
+;;   how the rest of corral discovers harnesses dynamically rather than
+;;   from a fixed list).
+
+(defun corral--variant-label (harness-id variant-name)
+  "Human-readable completion label for a variant: the harness id, or
+`harness-variant' for a named one -- the same shape as its launcher
+command name without the `corral-launch-' prefix."
+  (if variant-name
+      (format "%s-%s" harness-id variant-name)
+    (symbol-name harness-id)))
+
+(defun corral--launch-candidates ()
+  "Alist of (LABEL . (HARNESS-ID . VARIANT-NAME)) for every registered
+variant, vanilla and named."
+  (let (out)
+    (maphash (lambda (key _command)
+               (push (cons (corral--variant-label (car key) (cdr key)) key) out))
+             corral--variants)
+    (sort out (lambda (a b) (string< (car a) (car b))))))
+
+;;;###autoload
+(defun corral-launch ()
+  "Launch a corral session, choosing the variant from a completion prompt.
+Offers every registered variant -- a harness's vanilla command and any
+named variants (wrapper scripts, flags) added via
+`corral-harness-add-variant'. Then prompts for a directory and session
+name like every launcher (see `corral--do-launch')."
+  (interactive)
+  (let ((candidates (corral--launch-candidates)))
+    (unless candidates
+      (user-error "No corral launch variants registered"))
+    (let* ((label (completing-read "Launch session: " candidates nil t))
+           (key (cdr (assoc label candidates))))
+      (when key
+        (corral--do-launch (car key) (cdr key)
+                           (gethash key corral--variants))))))
+
+(defvar corral-launch-map (make-sparse-keymap)
+  "Prefix keymap for launching corral sessions.
+Populated by `corral--rebuild-launch-map' from the registered
+harnesses: one key per harness for its vanilla launcher, plus `l' for
+the `corral-launch' dispatcher. Bind this map to a prefix of your
+choice (see the example config).")
+
+(defun corral--launch-key-for (harness-id taken)
+  "Pick a single-character key string for HARNESS-ID not in TAKEN (a
+list of strings). Tries each letter of the harness name in turn, then
+falls back to any free lowercase letter, so first-letter clashes
+between two harnesses never drop one. Returns nil only if every
+lowercase letter is somehow taken."
+  (let ((name (symbol-name harness-id)))
+    (or (cl-loop for ch across name
+                 for s = (char-to-string (downcase ch))
+                 when (and (string-match-p "[a-z]" s) (not (member s taken)))
+                 return s)
+        (cl-loop for ch from ?a to ?z
+                 for s = (char-to-string ch)
+                 unless (member s taken) return s))))
+
+(defun corral--rebuild-launch-map ()
+  "Rebuild `corral-launch-map' from the currently registered harnesses.
+`l' is reserved for the `corral-launch' dispatcher; each harness then
+gets a letter via `corral--launch-key-for' bound to its vanilla
+launcher `corral-launch-<harness>'. Idempotent -- call it after a
+harness or variant is (re)registered."
+  (setcdr corral-launch-map nil)         ; clear without rebinding the symbol
+  (define-key corral-launch-map (kbd "l") #'corral-launch)
+  (let ((taken (list "l")))
+    (dolist (harness-id (sort (copy-sequence (corral--harness-ids))
+                              (lambda (a b) (string< (symbol-name a) (symbol-name b)))))
+      (let ((key (corral--launch-key-for harness-id taken))
+            (launcher (corral--launcher-name harness-id nil)))
+        (when (and key (fboundp launcher))
+          (push key taken)
+          (define-key corral-launch-map (kbd key) launcher)))))
+  corral-launch-map)
 
 (provide 'corral-harness)
 ;;; corral-harness.el ends here

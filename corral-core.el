@@ -57,6 +57,91 @@ attention, more urgent than a generic warning.")
 removal.  The panel and other observers hook in here instead of
 being called directly, so this file stays independent of any UI.")
 
+;;; Session minor mode (help / discoverability)
+
+;; A buffer-local minor mode turned on in every corral buffer -- each
+;; tracked session (see `corral--register') and the panel (see
+;; `corral-panel-mode'). Its real job is discoverability: with it
+;; active, `C-h m' (`describe-mode') in a session buffer lists a
+;; "Corral" section documenting what corral is and the keys available,
+;; the same way any major/minor mode documents itself. vterm already
+;; passes `C-h' through to Emacs (it is in the default
+;; `vterm-keymap-exceptions'), so this works from inside a running
+;; session, not just the panel.
+;;
+;; It binds the two commands that make sense from inside a session;
+;; `corral-switch-to-attention' is ALSO bound globally by the user (see
+;; the example config), since its primary use is jumping INTO a session
+;; from an unrelated buffer, where this buffer-local map is not active.
+;; Having it here too simply means `C-h m' documents it in context.
+
+(declare-function corral-show-panel "corral-panel")
+
+(defvar corral-session-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c C-SPC") #'corral-switch-to-attention)
+    (define-key map (kbd "C-c p") #'corral-show-panel)
+    map)
+  "Keymap active in corral buffers under `corral-session-mode'.")
+
+(define-minor-mode corral-session-mode
+  "Corral: track coding-agent sessions in vterm and act on them.
+
+This is the manual.  corral runs coding agents (Claude Code,
+Antigravity, Kiro CLI, and any you register) in vterm buffers, tracks
+each as a session, and shows them in a side panel colour-coded by
+state.  This minor mode is on in every corral buffer, so \\[describe-mode]
+shows this text from inside a session or the panel.
+
+QUICK START
+  1. Open the panel:            \\[corral-show-panel]
+  2. Launch a session:          \\[corral-launch-kiro] (Kiro CLI),
+                                \\[corral-launch-claude] (Claude Code),
+                                \\[corral-launch-antigravity] (Antigravity).
+     Each asks for a directory and a session-name suffix.  Or use
+     \\[corral-launch] to pick any registered variant by completion.
+  3. Switch between sessions:   \\[corral-switch-to-attention]
+     -- jumps to whichever most wants you (see CONCEPTS).
+
+KEYS
+  Active in any corral buffer (a session or the panel):
+\\{corral-session-mode-map}
+  Under the launch prefix (bind `corral-launch-map' to a prefix of your
+  choice; one key per harness, plus the `corral-launch' chooser):
+\\{corral-launch-map}
+  In the panel only:
+\\{corral-panel-mode-map}
+
+CONCEPTS
+  State.  Each session is one of:
+    working  -- the agent is doing something.
+    blocked  -- it needs your input (a permission prompt, a question).
+    idle     -- done, or waiting with nothing pending.
+  blocked is the one that wants you; the panel colours it most
+  urgently.  Fresh or just-recovered sessions show as `unknown' until
+  their first real report, and count as idle for ordering.
+
+  Attention order.  \\[corral-switch-to-attention] offers sessions
+  blocked first, then idle, then working; most recently changed first
+  within a group, so a bare RET at its prompt goes to the one most
+  likely to want you.  The current session is excluded.  Re-tier via
+  `corral-attention-order'.
+
+  Variants.  A harness is a tool corral knows how to detect (Claude
+  Code, Antigravity, Kiro CLI).  A variant is one way to launch it: the
+  plain command, or a named variant you register (a wrapper script,
+  extra flags) with `corral-harness-add-variant'.  Every variant gets
+  its own `corral-launch-<harness>[-<variant>]' command and appears in
+  the `corral-launch' chooser.
+
+  Panel.  \\[corral-show-panel] opens a side window, two lines per
+  session: label and colour-coded state, then elapsed time.  A
+  left-gutter marker flags every session whose buffer is visible on
+  screen; the one in the selected window is highlighted."
+  :init-value nil
+  :lighter nil
+  :keymap corral-session-mode-map)
+
 (defun corral--new-pane-id ()
   "A pane-id not currently in `corral--sessions'.
 
@@ -99,6 +184,7 @@ buffer."
            corral--sessions)
   (with-current-buffer buffer
     (setq-local corral--pane-id pane-id)
+    (corral-session-mode 1)
     (add-hook 'kill-buffer-hook #'corral--unregister-current-buffer nil t)
     (let ((proc (get-buffer-process buffer)))
       (when proc

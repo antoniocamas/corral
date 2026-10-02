@@ -55,7 +55,10 @@ working/blocked/idle state colour, which stays on the state word."
   :group 'corral)
 
 (define-derived-mode corral-panel-mode special-mode "Corral"
-  "Major mode for the corral session panel.")
+  "Major mode for the corral session panel."
+  ;; Also turn on the session minor mode here so `C-h m' in the panel
+  ;; documents corral and its keys, the same as in a session buffer.
+  (corral-session-mode 1))
 
 (defun corral--state-face (state)
   (pcase state

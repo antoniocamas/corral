@@ -110,4 +110,22 @@
 (with-eval-after-load 'vterm
   (add-to-list 'vterm-keymap-exceptions "C-c C-SPC"))
 
+;; --- Launching sessions by key ---
+;;
+;; `corral-launch-map' is a prefix keymap: under your chosen prefix,
+;; one key per harness launches its vanilla command
+;; (`corral-launch-claude' etc.), and `l' runs `corral-launch', a
+;; completion dispatcher over EVERY registered variant -- vanilla and
+;; named (claude-zai, kiro-mcp, ...). The per-harness keys are
+;; generated from the registered harnesses, so a harness added later
+;; gets a key automatically with nothing to change here.
+;;
+;; Bind the MAP (not a command) to a prefix. `C-c l' is free in
+;; shell/comint; `C-c C-l' is NOT (it is
+;; `comint-dynamic-list-input-ring' there). Add the prefix to the vterm
+;; exceptions too if you want to launch from inside a session buffer.
+(global-set-key (kbd "C-c l") corral-launch-map)
+(with-eval-after-load 'vterm
+  (add-to-list 'vterm-keymap-exceptions "C-c l"))
+
 ;;; setup-corral.el.example ends here

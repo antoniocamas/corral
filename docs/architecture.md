@@ -20,6 +20,14 @@ subdirectory. Package name == file name == `provide` symbol, per file.
   keeping this file UI-agnostic like the rest of core. Lives here, not
   the panel: it reads only the registry and switches in place with
   `pop-to-buffer-same-window`, needing no panel window open.
+  `corral-session-mode` is a buffer-local minor mode auto-enabled in
+  every tracked session buffer (`corral--register`) and the panel
+  (`corral-panel-mode`); its purpose is `C-h m` discoverability -- it
+  carries corral's help docstring and a small keymap so `describe-mode`
+  in a corral buffer documents the tool and its keys in context. Its
+  binding of `corral-switch-to-attention` is for that in-context help;
+  the from-anywhere invocation stays a separate global binding, since a
+  buffer-local map is not active in the unrelated buffer you jump from.
 - `corral-panel.el` — hand-rendered side panel (deliberately not
   `tabulated-list-mode`, which forces a header row and fixed-width
   columns that don't fit a narrow, discreet window): two compact
@@ -38,7 +46,13 @@ subdirectory. Package name == file name == `provide` symbol, per file.
   tail extraction for screen-scraping harnesses).
 - `corral-harness.el` — the `corral-harness` struct, the variant table
   (`corral-harness-add-variant`), `corral--do-launch`,
-  `corral--project-root-name`.
+  `corral--project-root-name`. Also the launch entry points
+  `corral-launch` (a completion dispatcher over every variant) and
+  `corral-launch-map` (a prefix keymap), whose keys are generated from
+  the registered harnesses rather than hardcoded -- rebuilt by
+  `corral-harness-add-variant` so a harness added later gets a key with
+  nothing to edit, consistent with corral's discover-harnesses-
+  dynamically approach elsewhere.
 - `corral-hook.el` — generic hook-strategy plumbing shared by every
   hook-capable harness: `corral-report` (the entry point a hook script
   calls back into via `emacsclient`), `corral-hook-confirm-and-write`,
