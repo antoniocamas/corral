@@ -24,9 +24,9 @@
 ;; Deliberately not `tabulated-list-mode': that forces a header row
 ;; and fixed-width columns, neither of which fit a narrow, discreet
 ;; side window meant to be glanced at, not read as a table. Each
-;; session gets two compact lines instead: an abbreviated label plus
-;; its colored state on the first, the elapsed time in a dim face
-;; underneath.
+;; session gets two compact lines instead: the label on the first
+;; (given the whole width, so a long one never crowds anything out),
+;; its colored state and the elapsed time together on the second.
 
 ;;; Code:
 
@@ -128,10 +128,15 @@ is re-run from a window-change hook."
              (focused (and (buffer-live-p buffer) (eq buffer focused-buffer)))
              (gutter (if visible corral-panel-visible-marker blank-gutter))
              (start (point)))
+        ;; Line 1: gutter + label (the label gets the whole width, so a
+        ;; long one never pushes the state off the narrow panel).
         (insert gutter " "
                 (if focused (propertize label 'face 'corral-panel-focused) label)
-                "  " (propertize (symbol-name state) 'face (corral--state-face state)) "\n")
-        (insert (propertize (concat blank-gutter " " elapsed) 'face 'shadow) "\n\n")
+                "\n")
+        ;; Line 2: state (colored) then elapsed (dim), under the label.
+        (insert blank-gutter " "
+                (propertize (symbol-name state) 'face (corral--state-face state))
+                "  " (propertize elapsed 'face 'shadow) "\n\n")
         (put-text-property start (point) 'corral-pane-id pane-id)))
     (goto-char (point-min))))
 

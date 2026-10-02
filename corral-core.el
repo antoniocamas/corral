@@ -135,9 +135,10 @@ CONCEPTS
   the `corral-launch' chooser.
 
   Panel.  \\[corral-show-panel] opens a side window, two lines per
-  session: label and colour-coded state, then elapsed time.  A
-  left-gutter marker flags every session whose buffer is visible on
-  screen; the one in the selected window is highlighted."
+  session: the label on the first, its colour-coded state and the
+  elapsed time on the second.  A left-gutter marker flags every
+  session whose buffer is visible on screen; the one in the selected
+  window is highlighted."
   :init-value nil
   :lighter nil
   :keymap corral-session-mode-map)

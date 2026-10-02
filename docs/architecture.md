@@ -30,9 +30,11 @@ subdirectory. Package name == file name == `provide` symbol, per file.
   buffer-local map is not active in the unrelated buffer you jump from.
 - `corral-panel.el` — hand-rendered side panel (deliberately not
   `tabulated-list-mode`, which forces a header row and fixed-width
-  columns that don't fit a narrow, discreet window): two compact
-  lines per session, abbreviated label + colored state, elapsed time
-  underneath. A left-gutter marker (`corral-panel-visible-marker`) and
+  columns that don't fit a narrow, discreet window): two compact lines
+  per session, the abbreviated label on the first (given the full
+  width so a long one never crowds it) and the colored state with the
+  elapsed time on the second. A left-gutter marker
+  (`corral-panel-visible-marker`) and
   a focused-label face (`corral-panel-focused`) flag visible and
   selected-window sessions. Because window changes (split, switch,
   select) never run `corral-session-change-hook`, the refresh is also

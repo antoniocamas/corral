@@ -138,5 +138,23 @@ face on its label; a merely-visible one does not."
                (line (corral-panel-test--line-for text "claude-p1")))
           (should (string-prefix-p "* " line)))))))
 
+(ert-deftest corral-panel-test-state-on-second-row-not-label-row ()
+  "The state renders on the second row (with the elapsed time), not on
+the label row -- so a long label can never push the state off the
+narrow panel."
+  (corral-panel-test--with-sessions
+    (let ((b (mk "p1" 'blocked)))
+      (set-window-buffer (selected-window) b)
+      (let* ((text (corral-panel-test--render-string))
+             (lines (split-string text "\n"))
+             (label-line (seq-find (lambda (l) (string-match-p "claude-p1" l)) lines))
+             (label-idx (seq-position lines label-line))
+             (second-row (nth (1+ label-idx) lines)))
+        ;; State is NOT on the label row ...
+        (should-not (string-match-p "blocked" label-line))
+        ;; ... it is on the row below, alongside the elapsed time.
+        (should (string-match-p "blocked" second-row))
+        (should (string-match-p "[0-9]+s" second-row))))))
+
 (provide 'corral-panel-tests)
 ;;; corral-panel-tests.el ends here
