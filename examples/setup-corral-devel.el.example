@@ -11,7 +11,7 @@
 
 ;;; Commentary:
 
-;; M-x corral-show-panel   -- open the side panel
+;; M-x corral-show-panel   -- toggle the side panel
 ;; M-x corral-launch-claude -- the default `claude' variant
 ;; M-x corral-launch-kiro   -- the default `kiro-cli chat' variant
 ;;

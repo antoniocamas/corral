@@ -186,9 +186,21 @@ view out from under someone reading it."
 (when (boundp 'window-selection-change-functions)
   (add-hook 'window-selection-change-functions #'corral--refresh-panel-on-window-change))
 
+(defun corral--panel-window ()
+  "Return the live window currently showing the panel buffer, or nil.
+Spans every live frame, matching how the panel's visible-marker logic
+treats visibility, so toggling and gutter marking agree on what
+\"shown\" means."
+  (let ((buf (get-buffer corral-panel-buffer-name)))
+    (and buf (get-buffer-window buf t))))
+
 ;;;###autoload
 (defun corral-show-panel ()
-  "Show the corral session panel in a right side window.
+  "Toggle the corral session panel in a right side window.
+
+If the panel is already showing in some window, delete that window
+and return -- so the same command (and the same key) both opens and
+dismisses it. Otherwise display it.
 
 The window is marked dedicated and excluded from `other-window'
 cycling -- a plain `display-buffer-in-side-window' call does neither
@@ -201,17 +213,20 @@ standard window parameters (`no-other-window', dedicating via
 window makes `switch-to-buffer' find or create another window instead
 of clobbering this one."
   (interactive)
-  (let* ((buf (corral--get-panel-buffer))
-         (window (display-buffer-in-side-window
-                  buf
-                  `((side . right) (slot . 0)
-                    (window-width . ,corral-panel-window-width)
-                    (window-parameters . ((no-other-window . t)
-                                           (no-delete-other-windows . t)))))))
-    (with-current-buffer buf
-      (corral--panel-render))
-    (when window
-      (set-window-dedicated-p window t))))
+  (let ((window (corral--panel-window)))
+    (if window
+        (delete-window window)
+      (let* ((buf (corral--get-panel-buffer))
+             (window (display-buffer-in-side-window
+                      buf
+                      `((side . right) (slot . 0)
+                        (window-width . ,corral-panel-window-width)
+                        (window-parameters . ((no-other-window . t)
+                                               (no-delete-other-windows . t)))))))
+        (with-current-buffer buf
+          (corral--panel-render))
+        (when window
+          (set-window-dedicated-p window t))))))
 
 (defun corral--session-at-point ()
   (let ((pane-id (get-text-property (point) 'corral-pane-id)))
@@ -246,7 +261,15 @@ effect on what the panel shows."
       (user-error "That session's buffer is gone"))
     (select-window (display-buffer buffer))))
 
-(define-key corral-panel-mode-map (kbd "g") #'corral-show-panel)
+(defun corral-refresh-panel ()
+  "Redraw the corral panel from current session state.
+Bound to `g' in the panel -- the usual Emacs refresh key. Separate
+from `corral-show-panel', which now toggles the window open/closed, so
+pressing `g' inside the panel redraws it instead of dismissing it."
+  (interactive)
+  (corral--refresh-panel))
+
+(define-key corral-panel-mode-map (kbd "g") #'corral-refresh-panel)
 (define-key corral-panel-mode-map (kbd "r") #'corral-rename-session)
 (define-key corral-panel-mode-map (kbd "RET") #'corral-switch-to-session)
 

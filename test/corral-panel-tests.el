@@ -156,5 +156,43 @@ narrow panel."
         (should (string-match-p "blocked" second-row))
         (should (string-match-p "[0-9]+s" second-row))))))
 
+(ert-deftest corral-panel-test-show-panel-toggles ()
+  "`corral-show-panel' opens the panel when hidden and closes it when
+already shown -- the same command both directions."
+  (corral-panel-test--with-sessions
+    (unwind-protect
+        (progn
+          (delete-other-windows)
+          ;; Not shown yet.
+          (should-not (corral--panel-window))
+          ;; First call opens it.
+          (corral-show-panel)
+          (should (corral--panel-window))
+          ;; Second call closes it.
+          (corral-show-panel)
+          (should-not (corral--panel-window)))
+      (when (corral--panel-window)
+        (delete-window (corral--panel-window)))
+      (when (get-buffer corral-panel-buffer-name)
+        (kill-buffer corral-panel-buffer-name))
+      (delete-other-windows))))
+
+(ert-deftest corral-panel-test-refresh-does-not-close ()
+  "`corral-refresh-panel' (the panel's `g') redraws without closing the
+window -- it is not the toggle."
+  (corral-panel-test--with-sessions
+    (unwind-protect
+        (progn
+          (delete-other-windows)
+          (corral-show-panel)
+          (should (corral--panel-window))
+          (corral-refresh-panel)
+          (should (corral--panel-window)))
+      (when (corral--panel-window)
+        (delete-window (corral--panel-window)))
+      (when (get-buffer corral-panel-buffer-name)
+        (kill-buffer corral-panel-buffer-name))
+      (delete-other-windows))))
+
 (provide 'corral-panel-tests)
 ;;; corral-panel-tests.el ends here

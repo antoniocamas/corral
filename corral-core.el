@@ -94,7 +94,7 @@ state.  This minor mode is on in every corral buffer, so \\[describe-mode]
 shows this text from inside a session or the panel.
 
 QUICK START
-  1. Open the panel:            \\[corral-show-panel]
+  1. Toggle the panel:          \\[corral-show-panel]
   2. Launch a session:          \\[corral-launch-kiro] (Kiro CLI),
                                 \\[corral-launch-claude] (Claude Code),
                                 \\[corral-launch-antigravity] (Antigravity).
@@ -134,7 +134,7 @@ CONCEPTS
   its own `corral-launch-<harness>[-<variant>]' command and appears in
   the `corral-launch' chooser.
 
-  Panel.  \\[corral-show-panel] opens a side window, two lines per
+  Panel.  \\[corral-show-panel] toggles a side window, two lines per
   session: the label on the first, its colour-coded state and the
   elapsed time on the second.  A left-gutter marker flags every
   session whose buffer is visible on screen; the one in the selected
