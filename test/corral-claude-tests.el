@@ -17,26 +17,16 @@
 
 ;;; Commentary:
 
-;; Run interactively with M-x ert, or in batch:
-;;   emacs -batch -L .. -l corral-claude-tests.el -f ert-run-tests-batch-and-exit
+;; Run from the repo root:
+;;   emacs -batch -L . -l test/corral-claude-tests.el -f ert-run-tests-batch-and-exit
 ;;
-;; Covers the settings.json merge logic (`corral-claude--merge-hooks')
-;; as pure-function tests, plus one end-to-end test through
-;; `corral-claude-install-hooks' itself against a real temp file
-;; (confirmation/diff display stubbed, since those are interactive).
-;;
-;; The emoji round-trip test locks down a real regression hit during
-;; development: `json-serialize' returns already-encoded raw UTF-8
-;; bytes, not a normal decoded Emacs string. Writing that through a
-;; coding system without decoding it first double-encodes any
-;; non-ASCII content -- silently, with no error, corrupting it. This
-;; surfaced via an emoji already present in an unrelated existing
-;; hook command.
+;; Tests `corral-claude--classify' against screens captured from a real
+;; Claude Code v2.1.292 in a vterm buffer (80 columns), not invented
+;; text -- see `.agents/rules/harness-design.md'.
 
 ;;; Code:
 
 (require 'ert)
-(require 'cl-lib)
 
 (let ((root (expand-file-name ".."
                                (file-name-directory
@@ -45,166 +35,156 @@
 
 (require 'corral-claude)
 
+(defconst corral-claude-test--rule
+  "────────────────────────────────────────────────────────────────────────────────")
 
-;;; corral-claude--merge-hooks (pure function, no disk I/O)
+(defconst corral-claude-test--footer-idle
+  "  ⚠ Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker · r…\n  ⏸ manual mode on · ? for shortcuts")
 
-(ert-deftest corral-claude-test-merge-adds-all-managed-events ()
-  "A merge from scratch (no existing hooks) adds all 7 managed events."
-  (let ((merged (corral-claude--merge-hooks nil)))
-    (dolist (pair corral-claude--event-states)
-      (let ((event (intern (concat ":" (car pair)))))
-        (should (plist-member merged event))
-        (should (= 1 (length (plist-get merged event))))))))
+(defun corral-claude-test--screen (&rest lines)
+  "LINES joined with newlines, plus trailing blank padding like a tall
+vterm window."
+  (concat (mapconcat #'identity lines "\n") "\n\n\n\n"))
 
-(ert-deftest corral-claude-test-session-start-maps-to-idle ()
-  "SessionStart must map to `idle', not `working': right after a
-session starts, Claude Code is sitting at its empty prompt waiting
-for the first message, nothing is happening yet. A real bug: an
-earlier version mapped it to `working', so every fresh session
-appeared permanently busy until the first tool use."
-  (should (equal (cdr (assoc "SessionStart" corral-claude--event-states)) "idle")))
+(defun corral-claude-test--prompt-box (footer &optional prompt)
+  (concat corral-claude-test--rule "\n❯ " (or prompt "") "\n"
+          corral-claude-test--rule "\n" footer))
 
-(ert-deftest corral-claude-test-permission-request-maps-to-blocked ()
-  "PermissionRequest reports `blocked', not `waiting': the state name
-is specifically for \"blocked on you, can't proceed without your
-decision\" -- deliberately not a generic word that could later be
-confused with, say, waiting on a pending background task."
-  (should (equal (cdr (assoc "PermissionRequest" corral-claude--event-states)) "blocked")))
+;;; idle
 
-(ert-deftest corral-claude-test-merge-preserves-unrelated-entries ()
-  "Entries on a managed event that aren't corral's own are kept
-alongside corral's, not replaced or dropped -- and entries on an
-event corral doesn't manage at all (Notification) are untouched."
-  (let* ((existing (list :Notification
-                         (vector (list :matcher ""
-                                       :hooks (vector (list :type "command"
-                                                             :command "notify-send hi"))))
-                         :PreToolUse
-                         (vector (list :matcher "*"
-                                       :hooks (vector (list :type "command"
-                                                             :command "echo my-own-hook"))))))
-         (merged (corral-claude--merge-hooks existing)))
-    ;; Notification: corral doesn't manage this event at all.
-    (should (equal (plist-get merged :Notification) (plist-get existing :Notification)))
-    ;; PreToolUse: corral manages it, so the unrelated entry plus
-    ;; corral's own new entry should both be present.
-    (let ((entries (append (plist-get merged :PreToolUse) nil)))
-      (should (= 2 (length entries)))
-      (should (seq-some (lambda (e) (equal (plist-get (car (append (plist-get e :hooks) nil)) :command)
-                                           "echo my-own-hook"))
-                        entries))
-      (should (seq-some #'corral-claude--entry-is-ours-p entries)))))
+(ert-deftest corral-claude-test-fresh-session-is-idle ()
+  (should (eq (corral-claude--classify
+               (corral-claude-test--screen
+                " ▐▛███▛█   Claude Code v2.1.292"
+                "                                                            ◐ medium · /effort"
+                (corral-claude-test--prompt-box
+                 corral-claude-test--footer-idle "Try \"write a test for <filepath>\"")))
+              'idle)))
 
-(ert-deftest corral-claude-test-merge-is-idempotent ()
-  "Merging corral's own already-merged output again produces the same
-result -- no accumulation of duplicate entries on repeated installs."
-  (let* ((once (corral-claude--merge-hooks nil))
-         (twice (corral-claude--merge-hooks once)))
-    (should (equal once twice))))
+(ert-deftest corral-claude-test-finished-turn-is-idle ()
+  "\"✻ Cooked for 7s\" shares the spinner glyph but has no ellipsis."
+  (should (eq (corral-claude--classify
+               (corral-claude-test--screen
+                "● The sleep is running in the background."
+                "✻ Cooked for 7s · done 22:17 · 1 shell still running"
+                (corral-claude-test--prompt-box
+                 "  ⏵⏵ auto mode on · 1 shell · ↓ to manage")))
+              'idle)))
 
-(ert-deftest corral-claude-test-merge-replaces-corral-owned-entry-in-place ()
-  "If corral's hook script path changes (e.g. reinstalled from a
-different location), re-merging replaces the old corral-owned entry
-rather than adding a second one alongside it."
-  (let* ((first-install (corral-claude--merge-hooks nil))
-         (second-install (cl-letf (((symbol-value 'corral-claude--hook-script) "/somewhere/else/corral-hook.sh"))
-                            (corral-claude--merge-hooks first-install))))
-    (dolist (pair corral-claude--event-states)
-      (let* ((event (intern (concat ":" (car pair))))
-             (entries (append (plist-get second-install event) nil)))
-        (should (= 1 (length entries)))
-        (should (string-prefix-p "/somewhere/else/corral-hook.sh"
-                                 (plist-get (car (append (plist-get (car entries) :hooks) nil))
-                                            :command)))))))
+(ert-deftest corral-claude-test-interrupted-turn-is-idle ()
+  "The reported bug: after an Esc interrupt no Stop hook fires, but the
+screen shows no working marker."
+  (should (eq (corral-claude--classify
+               (corral-claude-test--screen
+                "  The most "
+                "  ⎿  Interrupted · What should Claude do instead? "
+                (corral-claude-test--prompt-box
+                 "  ⏵⏵ auto mode on · 1 shell · ↓ to manage")))
+              'idle)))
 
+(ert-deftest corral-claude-test-bare-shell-and-empty-tail-are-idle ()
+  (should (eq (corral-claude--classify "antonio@host:~/work$ ") 'idle))
+  (should (eq (corral-claude--classify "") 'idle)))
 
-;;; corral--plist-set (pure function)
+;;; working
 
-(ert-deftest corral-claude-test-plist-set-preserves-key-order ()
-  "Setting an existing key's value keeps its original position rather
-than moving it to the end -- so a settings.json diff only shows what
-actually changed."
-  (let* ((original (list :a 1 :b 2 :c 3))
-         (updated (corral--plist-set original :b 99)))
-    (should (equal updated (list :a 1 :b 99 :c 3)))))
+(ert-deftest corral-claude-test-spinner-and-footer-is-working ()
+  (should (eq (corral-claude--classify
+               (corral-claude-test--screen
+                "● Running sleep 40"
+                "  ⎿  $ sleep 40"
+                "✶ Shimmying… (3s · ↓ 62 tokens)"
+                (corral-claude-test--prompt-box
+                 "  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt")))
+              'working)))
 
-(ert-deftest corral-claude-test-plist-set-appends-new-key ()
-  (let* ((original (list :a 1))
-         (updated (corral--plist-set original :hooks "x")))
-    (should (equal updated (list :a 1 :hooks "x")))))
+(ert-deftest corral-claude-test-footer-alone-is-working ()
+  "While a reply streams the spinner scrolls away; the footer stays."
+  (should (eq (corral-claude--classify
+               (corral-claude-test--screen
+                "● Guardians of the Shore"
+                "  Lighthouses are among the most enduring structures humans have built."
+                (corral-claude-test--prompt-box
+                 "  ⏵⏵ auto mode on · 1 shell · esc to interrupt · ↓ to manage")))
+              'working)))
 
+(ert-deftest corral-claude-test-spinner-alone-is-working ()
+  "Bare \"· Forging… \" at the very start of a turn, manual-mode footer."
+  (should (eq (corral-claude--classify
+               (corral-claude-test--screen
+                "· Forging… "
+                "  ⎿  Tip: Create skills by adding .md files to .claude/skills/ in your project "
+                (corral-claude-test--prompt-box
+                 "  ⏸ manual mode on · esc to interrupt")))
+              'working)))
 
-;;; The emoji double-encoding regression
+(ert-deftest corral-claude-test-typed-text-cannot-fake-working ()
+  "\"esc to interrupt\" typed in the prompt box is not the footer."
+  (should (eq (corral-claude--classify
+               (corral-claude-test--screen
+                (corral-claude-test--prompt-box
+                 corral-claude-test--footer-idle "what does esc to interrupt do")))
+              'idle)))
 
-(ert-deftest corral-claude-test-json-emoji-roundtrip ()
-  "`json-serialize' returns raw encoded UTF-8 bytes, not a decoded
-Emacs string -- `decode-coding-string' must be applied before that
-value is compared, diffed, or written anywhere, or non-ASCII content
-silently corrupts (each byte gets re-encoded as if it were its own
-codepoint)."
-  (let* ((emoji "🤖")
-         (existing (list :hooks (list :Notification
-                                      (vector (list :matcher ""
-                                                    :hooks (vector (list :type "command"
-                                                                         :command (format "notify-send '%s'" emoji))))))))
-         (encoded (json-serialize existing))
-         (correctly-decoded (decode-coding-string encoded 'utf-8)))
-    ;; The bug: comparing/writing ENCODED directly loses round-trip
-    ;; fidelity -- re-parsing it back does NOT reproduce the original
-    ;; emoji as one character.
-    (let ((reparsed-from-encoded
-           (json-parse-string encoded :object-type 'plist :array-type 'array)))
-      (should-not
-       (equal emoji
-              (plist-get (car (append (plist-get
-                                        (car (append (plist-get (plist-get reparsed-from-encoded :hooks) :Notification) nil))
-                                        :hooks)
-                                       nil))
-                         :command))))
-    ;; The fix: decoding first round-trips correctly.
-    (let ((reparsed-from-decoded
-           (json-parse-string correctly-decoded :object-type 'plist :array-type 'array)))
-      (should
-       (string-match-p
-        (regexp-quote emoji)
-        (plist-get (car (append (plist-get
-                                  (car (append (plist-get (plist-get reparsed-from-decoded :hooks) :Notification) nil))
-                                  :hooks)
-                                 nil))
-                   :command))))))
+;;; blocked
 
+(defconst corral-claude-test--permission-dialog
+  (corral-claude-test--screen
+   "● Creating empty file zz.txt"
+   "  ⎿  $ touch zz.txt"
+   corral-claude-test--rule
+   " Bash command"
+   " Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" "
+   " below"
+   " Create empty file zz.txt"
+   "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
+   " touch zz.txt"
+   "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
+   " Do you want to proceed?"
+   " ❯ 1. Yes"
+   "   2. Yes, and always allow access to /tmp/scratchpad/work"
+   "      from this project"
+   "   3. Yes, and switch to auto mode · auto mode handles these prompts for you"
+   "   4. No"
+   " Esc to cancel · Tab to amend"))
 
-;;; End-to-end: corral-claude-install-hooks against a real temp file
+(ert-deftest corral-claude-test-permission-dialog-is-blocked ()
+  (should (eq (corral-claude--classify corral-claude-test--permission-dialog)
+              'blocked)))
 
-(ert-deftest corral-claude-test-install-hooks-end-to-end ()
-  "The full installer, run twice against a real file containing an
-emoji in an unrelated existing hook: first run writes correctly
-(emoji intact, unrelated hook preserved), second run is idempotent
-and doesn't even ask for confirmation."
-  (let ((path (make-temp-file "corral-claude-test-" nil ".json"))
-        (confirm-calls 0))
-    (unwind-protect
-        (progn
-          (with-temp-file path
-            (insert "{\"hooks\":{\"Notification\":[{\"matcher\":\"\",\"hooks\":[{\"type\":\"command\",\"command\":\"notify-send '🤖'\"}]}]},\"model\":\"sonnet\"}"))
-          (let ((corral-claude-settings-path path))
-            (cl-letf (((symbol-function 'yes-or-no-p)
-                       (lambda (&rest _) (cl-incf confirm-calls) t))
-                      ((symbol-function 'display-buffer) (lambda (&rest _) nil)))
-              (corral-claude-install-hooks))
-            (let ((written (with-temp-buffer (insert-file-contents path) (buffer-string))))
-              (should (string-match-p "🤖" written))
-              (should (string-match-p "sonnet" written))
-              (dolist (pair corral-claude--event-states)
-                (should (string-match-p (car pair) written))))
-            (should (= confirm-calls 1))
-            ;; Second run: idempotent, must not prompt again.
-            (cl-letf (((symbol-function 'yes-or-no-p)
-                       (lambda (&rest _) (error "should not be asked when nothing changed"))))
-              (corral-claude-install-hooks))))
-      (delete-file path)
-      (dolist (backup (file-expand-wildcards (concat path ".corral-backup-*")))
-        (delete-file backup)))))
+(ert-deftest corral-claude-test-folder-trust-dialog-is-blocked ()
+  (should (eq (corral-claude--classify
+               (corral-claude-test--screen
+                corral-claude-test--rule
+                " Accessing workspace:"
+                " Quick safety check: Is this a project you created or one you trust?"
+                " Security guide"
+                " ❯ No, exit"
+                "   Yes, I trust this folder"
+                " Enter to confirm · Esc to cancel"))
+              'blocked)))
+
+(ert-deftest corral-claude-test-dismissed-dialog-in-scrollback-is-not-blocked ()
+  "After the dialog is denied its text stays in scrollback; only the
+live screen counts."
+  (should (eq (corral-claude--classify
+               (concat corral-claude-test--permission-dialog
+                       (corral-claude-test--screen
+                        "❯ Use the Bash tool to run: touch zz.txt"
+                        "  Ran 1 shell command "
+                        "  ⎿  Interrupted · What should Claude do instead?"
+                        "✻ Crunched for 2s · done 22:18"
+                        (corral-claude-test--prompt-box
+                         corral-claude-test--footer-idle))))
+              'idle)))
+
+(ert-deftest corral-claude-test-question-text-alone-is-not-blocked ()
+  "A reply that merely mentions the phrase has no Yes/No options."
+  (should (eq (corral-claude--classify
+               (corral-claude-test--screen
+                "● Do you want to proceed? That is up to you."
+                (corral-claude-test--prompt-box corral-claude-test--footer-idle)))
+              'idle)))
 
 (provide 'corral-claude-tests)
 ;;; corral-claude-tests.el ends here

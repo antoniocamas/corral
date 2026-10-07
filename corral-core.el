@@ -21,7 +21,7 @@
 ;; buffer running one coding-agent harness (Claude Code, Antigravity,
 ;; ...), identified by a pane-id.  This file knows nothing about any
 ;; particular harness, how it's launched, or how its state is
-;; detected (hooks vs. screen-scraping) -- it only stores
+;; detected -- it only stores
 ;; working/blocked/idle and notifies interested parties (the panel,
 ;; the attention nudge) when that changes.
 
@@ -215,9 +215,9 @@ already-running processes or their property lists.
 Call this once, right after re-`require'ing corral from source. Each
 recovered session starts back at state `unknown' -- exactly like a
 freshly launched one -- since there is no way to recover the last
-known state, only its identity; a hook-capable harness resyncs on its
-next hook event, a scrape-capable one on its next tick once
-`corral-scrape--sync-timer' notices it and restarts the shared timer.
+known state, only its identity; the session resyncs on the next
+scrape tick once `corral-scrape--sync-timer' notices it and restarts
+the shared timer.
 
 Renumbers a stashed pane-id that collides with a DIFFERENT live
 session's: before the collision-safe `corral--new-pane-id', a launch
@@ -228,12 +228,9 @@ duplicates but cannot un-bake existing ones. Recovering both under the
 one shared id would silently drop or overwrite a session (observed: a
 session vanishing from the panel). So a stashed id already held by
 another live buffer is replaced with a fresh one via
-`corral--new-pane-id', which is also restashed on the process. A hook
-harness inside that process still reports under its OLD env
-CORRAL_PANE_ID, which no longer matches -- a known limitation of
-recovering a mis-stamped process; the scrape harnesses corral uses
-today don't depend on it, and the alternative is losing the session
-entirely."
+`corral--new-pane-id', which is also restashed on the process. The
+process's OLD env CORRAL_PANE_ID no longer matches -- harmless, since
+scrape detection reads the buffer and never the environment."
   (interactive)
   (dolist (proc (process-list))
     (let ((pane-id (process-get proc 'corral-pane-id))
@@ -307,27 +304,6 @@ buffer's real name if it's still live, else the pane-id itself."
 (defun corral--notify-attention (pane-id)
   (message "corral: %s needs input" (corral--session-label pane-id))
   (corral--flash-mode-line))
-
-(defun corral--server-socket-name ()
-  "Value to hand `emacsclient -s' so it reaches THIS Emacs.
-
-Needed at two points: when a launched session's environment is set
-up (so a hook script or scraped process knows where to report back),
-and when resolving that value back into an actual connection.
-
-`server-name' is sometimes set to a path containing a literal `~',
-which Emacs itself expands internally but which `emacsclient -s'
-does not (that only happens via shell expansion, and this value
-never passes through a shell) -- discovered the hard way in the
-corral PoC. Resolve it here instead."
-  (unless (server-running-p)
-    (user-error "Emacs server is not running here (M-x server-start first) \
--- a hook-based or scrape-based harness won't be able to correlate \
-back to this Emacs"))
-  (let ((name (or server-name "server")))
-    (if (string-match-p "/" name)
-        (expand-file-name name)
-      name)))
 
 ;;; Attention-ordered session switching
 

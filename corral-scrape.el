@@ -21,7 +21,7 @@
 ;; system to lean on, e.g. Antigravity's `agy' CLI): a single shared
 ;; timer that periodically scans the tail of every tracked session
 ;; whose harness has `:strategy 'scrape, classifies it, and reports
-;; state changes the same way a hook script would via `corral-report'.
+;; state changes through `corral--set-state'.
 ;;
 ;; No manually-tracked list of scrape-tracked pane-ids: the registry in
 ;; `corral-core.el' already knows every session and its harness, so the
@@ -32,6 +32,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'corral-core)
 (require 'corral-harness)
 (require 'corral-vterm)
@@ -65,6 +66,27 @@ truncate."
 
 (defvar corral-scrape--timer nil)
 
+(defun corral-scrape-bottom-non-empty-lines (tail n)
+  "The last N non-empty lines of TAIL, rejoined with newlines --
+corral's port of herdr's `bottom_non_empty_lines(N)' region
+\(`src/detect/mod.rs'). Trailing blank padding (a full-screen TUI pads
+unused rows) is skipped; the slice starts at the Nth-from-last
+non-blank line and runs to the end, blank lines in between included,
+matching herdr's slice semantics.
+
+Scrape classifiers scope their rules to a region like this rather
+than the whole tail: corral hands them a large character tail, so
+text from an earlier dialog still in scrollback would otherwise
+override the live screen."
+  (let* ((lines (split-string tail "\n"))
+         (indexed (cl-loop for l in lines for i from 0
+                           unless (string-empty-p (string-trim l))
+                           collect i))
+         (start (nth (max 0 (- (length indexed) n)) indexed)))
+    (if start
+        (mapconcat #'identity (nthcdr start lines) "\n")
+      "")))
+
 (defun corral-scrape--log (pane-id state tail)
   (when corral-scrape-debug-log
     (when (and corral-scrape-debug-log-max-bytes
@@ -93,9 +115,8 @@ harness uses the `scrape' strategy."
 
 (defun corral-scrape--tick ()
   "Scan the tail of every scrape-strategy session and report a state
-change the same way a hook script would, via `corral--set-state' plus
-`corral--notify-attention' on transition to `blocked' -- mirrors
-`corral-report's own logic in `corral-hook.el'.
+change via `corral--set-state', plus `corral--notify-attention' on
+transition to `blocked'.
 
 Each session is scanned inside `condition-case': this runs on a
 shared repeating timer, and an unhandled error escaping the timer

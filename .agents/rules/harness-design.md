@@ -1,7 +1,7 @@
 # Harness and variant design
 
-- **A harness describes detection only** — hooks vs. screen-scraping,
-  and how to recognize working/blocked/idle. It never describes how to
+- **A harness describes detection only** — how to recognize
+  working/blocked/idle from the screen. It never describes how to
   launch the tool. `corral-harness` has no command/launch slot.
 - **A variant describes one way to launch** a harness: a plain command
   string, registered via `corral-harness-add-variant`, typically from
@@ -15,17 +15,14 @@
   default (`project.el` root name, or directory basename). A workspace
   root holding several sibling repositories is a real, common case
   where automatic project detection has nothing useful to suggest.
-- **A hook installer always confirms before writing**, via
-  `corral-hook-confirm-and-write` — never a silent auto-install, even
-  with a backup made. A new hook-capable harness's installer should go
-  through that function, not write settings files directly.
-- **Recognize a harness's own previously-installed hook entries by the
-  hook script's basename, not its full path** (see
-  `corral-claude--entry-is-ours-p`). corral's own install location can
-  change between installs (a different checkout, a relocated clone);
-  matching on the full path leaves old entries orphaned as
-  unrecognized stray hooks instead of being replaced. Regression test:
-  `corral-claude-test-merge-replaces-corral-owned-entry-in-place`.
+- **Every harness is detected by screen-scraping; corral installs no
+  hooks and edits no tool config files.** Claude Code was hook-based
+  once and that was the source of a real bug: no hook fires when a turn
+  is interrupted with Esc, and an API-error turn ends without `Stop`,
+  so sessions stayed `working` forever. The screen cannot go stale that
+  way. A new harness should not reintroduce a callback channel just
+  because the tool has one -- see `docs/inspiration.md` (herdr does the
+  same for Claude Code).
 - **Screen-scraping tail extraction is a character budget, not a line
   count** (`corral-vterm-tail-chars`). A fixed line-count tail can miss
   real content entirely on a tall terminal window if a full-screen TUI

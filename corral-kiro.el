@@ -42,7 +42,7 @@
 ;; classifier a ~20000-char tail, so a *previous* dialog's
 ;; `esc to close'/`esc to cancel' text still in scrollback forced a
 ;; permanent false `blocked' until this was scoped to the live footer
-;; lines the way herdr does. See `corral-kiro--bottom-non-empty-lines'.
+;; lines the way herdr does. See `corral-scrape-bottom-non-empty-lines'.
 ;;
 ;; The blocked rules also gate on a footer AND a body line together,
 ;; not a lone phrase -- the first port matched `esc to close' or
@@ -88,23 +88,9 @@
 ;; `esc to close'/`esc to cancel' text still sitting in scrollback
 ;; would otherwise force `blocked' forever even after Kiro has moved on
 ;; to working or idle. Scoping to the live footer lines the way herdr
-;; does is what makes the three states mutually exclusive. Ported from
-;; herdr's `bottom_non_empty_lines' in `src/detect/mod.rs'.
-
-(defun corral-kiro--bottom-non-empty-lines (tail n)
-  "The last N non-empty lines of TAIL, rejoined with newlines --
-corral's port of herdr's `bottom_non_empty_lines(N)' region. Trailing
-blank padding (a full-screen TUI pads unused rows) is skipped; the
-slice starts at the Nth-from-last non-blank line and runs to the end,
-blank lines in between included, matching herdr's slice semantics."
-  (let* ((lines (split-string tail "\n"))
-         (indexed (cl-loop for l in lines for i from 0
-                           unless (string-empty-p (string-trim l))
-                           collect i))
-         (start (nth (max 0 (- (length indexed) n)) indexed)))
-    (if start
-        (mapconcat #'identity (nthcdr start lines) "\n")
-      "")))
+;; does is what makes the three states mutually exclusive. The region
+;; helper (`corral-scrape-bottom-non-empty-lines') lives in
+;; `corral-scrape.el', shared with the other scrape harnesses.
 
 ;; Blocked: an approval/question dialog is up. kiro.toml gates each
 ;; blocked rule on BOTH a dialog footer AND a dialog body line -- not a
@@ -171,7 +157,7 @@ footer AND a body line, not a lone phrase."
 (defun corral-kiro--classify (tail)
   "Classify TAIL for a Kiro CLI session into `blocked', `idle', or
 `working'. All matching is scoped to the bottom non-empty lines of
-TAIL (see `corral-kiro--bottom-non-empty-lines'), not the whole
+TAIL (see `corral-scrape-bottom-non-empty-lines'), not the whole
 scrollback -- the correction after live testing, where stale dialog
 text in scrollback forced a permanent false `blocked'.
 
@@ -181,8 +167,8 @@ attention, and a dialog replaces the live footer on screen). Among the
 non-blocked footers, idle outranks working, as `live_prompt_idle'
 \(1100) outranks `live_working_footer' (950). Unmatched falls back to
 idle."
-  (let* ((blocked-region (corral-kiro--bottom-non-empty-lines tail 8))
-         (live-region (corral-kiro--bottom-non-empty-lines tail 4)))
+  (let* ((blocked-region (corral-scrape-bottom-non-empty-lines tail 8))
+         (live-region (corral-scrape-bottom-non-empty-lines tail 4)))
     (cond
      ((corral-kiro--blocked-p blocked-region) 'blocked)
      ((corral-kiro--line-matches-p live-region corral-kiro--idle-line-regexp) 'idle)

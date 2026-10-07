@@ -20,11 +20,8 @@
 ;; directory, then a session-name suffix (pre-filled with a sensible
 ;; default), and tracks the resulting vterm buffer in the panel.
 ;;
-;; M-x corral-claude-install-hooks merges corral's own hooks into
-;; ~/.claude/settings.json -- shows a diff and asks for confirmation
-;; before writing anything. Not called automatically here on purpose:
-;; it's a real edit to a hand-maintained config file, run it
-;; deliberately when you want it.
+;; Claude Code is tracked by reading its screen, so there is nothing to
+;; install into ~/.claude/settings.json.
 
 ;;; Code:
 

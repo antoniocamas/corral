@@ -17,8 +17,8 @@
 
 ;;; Commentary:
 
-;; A harness describes DETECTION for one coding-agent tool (hooks vs.
-;; screen-scraping) and nothing about how it's launched. A variant
+;; A harness describes DETECTION for one coding-agent tool (how to
+;; recognize working/blocked/idle from its screen) and nothing about how it's launched. A variant
 ;; describes one way to launch it: a plain command string, registered
 ;; separately (typically from the user's own config, e.g.
 ;; setup-corral.el) so personal wrapper scripts never need to touch
@@ -42,10 +42,9 @@
 (cl-defstruct corral-harness
   id            ; symbol, e.g. 'claude, 'antigravity
   abbrev        ; short display prefix for the panel, e.g. "cl" for claude
-  strategy      ; 'hooks or 'scrape
-  installer     ; hooks strategy: function to check/install hook config
-  classifier    ; scrape strategy: function (tail-string -> state symbol)
-  tail-chars)   ; scrape strategy: override `corral-vterm-tail-chars' if needed
+  strategy      ; 'scrape
+  classifier    ; function (tail-string -> state symbol)
+  tail-chars)   ; override `corral-vterm-tail-chars' if needed
 
 (defvar corral--harnesses (make-hash-table :test 'eq)
   "Harness id -> `corral-harness' struct.")
@@ -98,17 +97,15 @@ new vterm session for HARNESS-ID/VARIANT-NAME, typing COMMAND into it."
                    (format "%s-%s" harness-id suffix)))
            (buffer-name (generate-new-buffer-name (format "*%s*" base)))
            (pane-id (corral--new-pane-id))
-           (server-name (corral--server-socket-name))
-           (extra-env (list (cons "CORRAL_PANE_ID" pane-id)
-                             (cons "CORRAL_SERVER_NAME" server-name)))
+           (extra-env (list (cons "CORRAL_PANE_ID" pane-id)))
            (buffer (corral--vterm-spawn buffer-name dir extra-env)))
       (corral--register pane-id buffer harness-id variant-name suffix)
       ;; Genuinely idle at this instant: the shell just started, and
       ;; `command' hasn't even been typed into it yet (that happens
       ;; after a short deferred delay, in `corral--vterm-send-command')
       ;; -- setting `working' here would claim something is happening
-      ;; before it actually is. The real SessionStart hook flips this
-      ;; to `working' once the harness itself actually starts.
+      ;; before it actually is. The harness's own scrape classifier
+      ;; takes over on the next tick once the tool is on screen.
       (corral--set-state pane-id 'idle)
       (corral--vterm-send-command buffer command))))
 
@@ -197,7 +194,7 @@ command: BUFFER's process must still carry the CORRAL_PANE_ID
 `corral--do-launch' set in its environment at spawn time, or there is
 nothing authoritative to recover the pane-id from, and this refuses
 rather than invent one -- a wrong pane-id would silently misdirect a
-hook script already running inside that process. Only works where
+process already running inside it. Only works where
 `corral--process-environ-value' does (Linux's /proc)."
   (interactive (list (read-buffer "Adopt buffer: " nil t)))
   (let* ((buf (get-buffer buffer))

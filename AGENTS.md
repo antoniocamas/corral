@@ -11,16 +11,14 @@ be one itself.
 
 ### Project Profile
 
-- **Scale:** small. One Emacs Lisp package, 8 files at repo root (no
+- **Scale:** small. One Emacs Lisp package, 9 files at repo root (no
   sub-packages), roughly 700–900 lines of Elisp, tree two levels deep
   (`test/`, `.agents/rules/`, `docs/`).
 - **Conventionality:** bespoke. The flat-file layout and ERT usage are
-  standard Elisp package convention, but two invented, non-obvious
-  structures govern real work here and are not inferable from general
+  standard Elisp package convention, but one invented, non-obvious
+  structure governs real work here and is not inferable from general
   Elisp knowledge: the harness/variant separation (detection is never
-  coupled to launch) and `json-serialize`/`json-parse-string`'s
-  plist+vector requirement with raw-byte output needing explicit
-  decoding.
+  coupled to launch), with every harness detected by screen-scraping.
 - **Context budget:** small. All source and tests fit comfortably in a
   single context window.
 
@@ -48,13 +46,12 @@ be one itself.
 
 ## System Documents
 
-- `docs/architecture.md` — Read when navigating unfamiliar code, adding a new file, or before touching the settings.json merge logic
+- `docs/architecture.md` — Read when navigating unfamiliar code or adding a new file
 - `docs/inspiration.md` — attribution and what specifically was and wasn't carried over from herdr
 - `docs/deployment.md` — Read before changing how corral is installed or updated (production vs. devel, the package-vc-upgrade-on-startup pattern)
 
 ## Rules
 
-- `.agents/rules/json-encoding.md` — Read before touching any JSON parse/merge/serialize code path
 - `.agents/rules/harness-design.md` — Read before adding or modifying a harness or its launch variants
 - `.agents/rules/adding-a-harness.md` — Read before adding a new harness: the step-by-step sequence (files, requires, tests, docs, reload/teardown gotchas), and how to diagnose a reload that doesn't seem to work
 - `.agents/rules/live-session-safety.md` — Read before validating any change against a real Emacs session

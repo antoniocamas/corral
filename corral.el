@@ -34,7 +34,6 @@
 ;; Quickstart:
 ;;
 ;;   (require 'corral)
-;;   M-x corral-claude-install-hooks   ; once, reviews a diff before writing
 ;;   M-x corral-show-panel
 ;;   M-x corral-launch-claude
 ;;
@@ -47,7 +46,6 @@
 (require 'corral-vterm)
 (require 'corral-panel)
 (require 'corral-harness)
-(require 'corral-hook)
 (require 'corral-claude)
 (require 'corral-scrape)
 (require 'corral-antigravity)

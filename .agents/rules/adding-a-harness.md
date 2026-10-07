@@ -8,19 +8,19 @@ re-discovering the same gaps piece by piece. Design principles (what a
 harness *is*, what it isn't) are in `.agents/rules/harness-design.md`
 — read that first; this file is the sequencing, not the design.
 
-1. **Pick a detection strategy.** `hooks` if the tool has a
-   callback/hook system to lean on; `scrape` (periodic tail-of-buffer
-   text matching) otherwise. See `harness-design.md`.
+1. **Strategy is `scrape`** (periodic tail-of-buffer text matching) --
+   corral has no other. See `harness-design.md` for why hooks were
+   dropped.
 
 2. **Write `corral-<name>.el`:**
    - `(make-corral-harness :id '<name> :abbrev "<short>" :strategy
-     '<hooks|scrape> ...)` — `:installer` for hooks, `:classifier`
-     (+ optional `:tail-chars`) for scrape.
+     'scrape :classifier #'corral-<name>--classify)` (+ optional
+     `:tail-chars`).
    - `(corral-harness-register ...)` plus the harness's own **default**
      variant only: `(corral-harness-add-variant '<name> nil "<command>")`.
      Personal wrapper variants belong in the user's own config, not
      here (`harness-design.md`).
-   - For a scrape harness: base every rule on real captured screen
+   - Base every rule on real captured screen
      text via `corral-scrape-debug-log` against the actual running
      tool — never a borrowed manifest (herdr's own antigravity.toml
      didn't match reality) and never a guess.
@@ -29,8 +29,7 @@ harness *is*, what it isn't) are in `.agents/rules/harness-design.md`
    nothing fails loudly if you don't — the harness just silently never
    registers.
 
-4. **Add `test/corral-<name>-tests.el`** — pure classifier/merge-logic
-   tests, no live tool or real vterm buffer needed (see the
+4. **Add `test/corral-<name>-tests.el`** — pure classifier tests, no live tool or real vterm buffer needed (see the
    `corral-test` skill, `references/writing-tests.md`, for the pattern).
 
 5. **Update the docs that list files/tests by name** — both of these

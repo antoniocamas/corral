@@ -1,16 +1,22 @@
 # Writing a corral test
 
-Prefer testing pure functions directly (`corral-claude--merge-hooks`,
-`corral--plist-set`, a harness `--classify`, the encode/decode step)
-over the interactive wrapper (`corral-claude-install-hooks`).
+Prefer testing pure functions directly (a harness `--classify`,
+`corral-scrape-bottom-non-empty-lines`) over anything that needs a real
+vterm buffer or timer.
 
-Where an end-to-end test through the real function is worth it, stub
-`yes-or-no-p`/`display-buffer` with `cl-letf` and use a real temp file
-cleaned up in `unwind-protect` — see
-`corral-claude-test-install-hooks-end-to-end` in
-`test/corral-claude-tests.el` for the pattern.
+For a scrape harness, build fixtures from screens captured off the real
+tool, not invented text: a full screen with scrollback above the live
+footer, plus trailing blank padding. The shape is the point -- the
+classifier must key off the live bottom lines, and the regressions
+worth locking down are stale dialog text in scrollback and
+look-alike text (a finished-turn summary resembling a spinner line, a
+prompt containing a footer phrase). See `test/corral-claude-tests.el`
+and `test/corral-kiro-tests.el`.
 
-A test is not a formality here: the hook-entry-recognition bug that
-`.agents/rules/harness-design.md` describes (matching on the hook
-script's basename, not its full path) was found by writing a test for
-a scenario manual testing hadn't covered, not by manual testing.
+To exercise the generic tick/timer logic, call `corral-scrape--tick`
+directly against a fake harness and fake buffers (see
+`test/corral-scrape-tests.el`) rather than waiting on a real timer.
+
+A test is not a formality here: the false-`blocked`-from-scrollback bug
+in the kiro classifier was found by a test for a scenario manual
+testing hadn't covered.

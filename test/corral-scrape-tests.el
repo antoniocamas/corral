@@ -21,9 +21,8 @@
 ;; attention notification on transition to `blocked', and starting/
 ;; stopping the shared timer via `corral-session-change-hook') against
 ;; a fake scrape-strategy harness and fake buffers -- no real timer
-;; ever needs to fire, `corral-scrape--tick' is called directly, same
-;; as the hook-strategy tests stub interactive functions rather than
-;; waiting on real events.
+;; ever needs to fire, `corral-scrape--tick' is called directly rather
+;; than waiting on real timer events.
 
 ;;; Code:
 
@@ -108,14 +107,14 @@ notification -- only `blocked' is urgent enough for that."
 alone by the tick -- `corral-scrape--scrape-sessions' must filter it
 out."
   (corral-scrape-test--with-clean-state
-   (corral-harness-register (make-corral-harness :id 'corral-scrape-test-hook-harness
+   (corral-harness-register (make-corral-harness :id 'corral-scrape-test-other-harness
                                                   :abbrev "csh"
-                                                  :strategy 'hooks))
+                                                  :strategy 'manual))
    (let ((buffer (generate-new-buffer " *corral-scrape-test*")))
      (unwind-protect
          (progn
            (with-current-buffer buffer (insert "status: WORKING now"))
-           (corral--register "test-pane-4" buffer 'corral-scrape-test-hook-harness nil)
+           (corral--register "test-pane-4" buffer 'corral-scrape-test-other-harness nil)
            (corral-scrape--tick)
            (should (eq (plist-get (gethash "test-pane-4" corral--sessions) :state) 'unknown)))
        (kill-buffer buffer)))))
@@ -205,6 +204,19 @@ every unit test still passed."
            (should corral-scrape--timer)
            (should (corral-scrape--timer-live-p)))
        (kill-buffer buffer)))))
+
+;;; bottom-non-empty-lines region helper
+
+(ert-deftest corral-scrape-test-bottom-non-empty-lines-skips-trailing-blanks ()
+  "Trailing blank padding is skipped; the N most recent non-empty
+lines are returned with intervening structure preserved."
+  (let ((region (corral-scrape-bottom-non-empty-lines "a\n\nb\n\nc\n\n\n" 2)))
+    (should (string-match-p "b" region))
+    (should (string-match-p "c" region))
+    (should-not (string-match-p "a" region))))
+
+(ert-deftest corral-scrape-test-bottom-non-empty-lines-blank-tail ()
+  (should (equal (corral-scrape-bottom-non-empty-lines "\n  \n" 3) "")))
 
 (provide 'corral-scrape-tests)
 ;;; corral-scrape-tests.el ends here

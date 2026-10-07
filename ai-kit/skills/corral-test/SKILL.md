@@ -11,7 +11,7 @@ corral uses ERT. Run the full suite in batch from the repo root:
 
 ```sh
 emacs -Q --batch -L . \
-  -l test/corral-core-tests.el -l test/corral-hook-tests.el \
+  -l test/corral-core-tests.el \
   -l test/corral-claude-tests.el -l test/corral-scrape-tests.el \
   -l test/corral-antigravity-tests.el -l test/corral-kiro-tests.el \
   -f ert-run-tests-batch-and-exit

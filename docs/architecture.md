@@ -55,26 +55,21 @@ subdirectory. Package name == file name == `provide` symbol, per file.
   `corral-harness-add-variant` so a harness added later gets a key with
   nothing to edit, consistent with corral's discover-harnesses-
   dynamically approach elsewhere.
-- `corral-hook.el` — generic hook-strategy plumbing shared by every
-  hook-capable harness: `corral-report` (the entry point a hook script
-  calls back into via `emacsclient`), `corral-hook-confirm-and-write`,
-  `corral-hook-json-pretty` (indented JSON for human-readable
-  settings-file diffs -- never `json-serialize` directly, which is
-  always compact/single-line).
-- `corral-claude.el` — the Claude Code harness (hooks strategy):
-  `corral-claude-install-hooks`, the settings.json merge logic
-  (`corral-claude--merge-hooks`), the default `claude` launch variant.
-- `corral-hook.sh` — one generic hook script, shared by every
-  hook-capable harness; a settings-file installer only needs to point
-  at it, never write its own copy.
-- `corral-scrape.el` — generic scrape-strategy plumbing, the
-  scrape-strategy counterpart to `corral-hook.el`: a single shared
+- `corral-claude.el` — the Claude Code harness (scrape strategy):
+  `corral-claude--classify`, written from screens captured off a real
+  Claude Code and cross-checked against herdr's `claude.toml`, plus the
+  default `claude` launch variant. corral installs no hooks and never
+  touches `~/.claude/settings.json` -- see `docs/inspiration.md` and
+  the "no hooks" note in `.agents/rules/harness-design.md`.
+- `corral-scrape.el` — generic scrape-strategy plumbing: a single shared
   timer (`corral-scrape--tick`) that scans every tracked session whose
   harness has `:strategy 'scrape`, started/stopped purely by observing
   `corral-session-change-hook` rather than explicit calls from
-  `corral--do-launch` or a kill-buffer hook.
+  `corral--do-launch` or a kill-buffer hook. Also
+  `corral-scrape-bottom-non-empty-lines`, the region helper every
+  classifier uses to look only at the live bottom of the screen.
 - `corral-antigravity.el` — the Antigravity harness (scrape strategy,
-  since `agy` has no hook system): `corral-antigravity--classify`,
+  `agy` has no hook system): `corral-antigravity--classify`,
   ported from a real captured PoC (see
   `../emacs-herd/antigravity-plan.md`) and pinned to one `agy` version
   -- must be re-verified against a live session before being trusted
@@ -125,6 +120,6 @@ and `corral-recover-sessions` walks `(process-list)` afterward to
 re-`corral--register` any live one whose properties aren't yet back in
 `corral--sessions`. Recovered sessions start at state `unknown` -- only
 identity survives, not last-known state -- and resync from there via
-each harness's own detection strategy (next hook event, or next scrape
+each harness's own detection strategy (next scrape
 tick once `corral-scrape--sync-timer` notices the reconstructed
 session and restarts the shared timer).

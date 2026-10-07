@@ -172,29 +172,5 @@ question_panel cluster."
 (ert-deftest corral-kiro-test-empty-tail-falls-back-to-idle ()
   (should (eq (corral-kiro--classify "") 'idle)))
 
-
-;;; region helper
-
-(ert-deftest corral-kiro-test-bottom-non-empty-lines-skips-trailing-blanks ()
-  "Trailing blank padding is skipped; the N most recent non-empty
-lines are returned with intervening structure preserved."
-  (let ((region (corral-kiro--bottom-non-empty-lines "a\n\nb\n\nc\n\n\n" 2)))
-    (should (string-match-p "b" region))
-    (should (string-match-p "c" region))
-    (should-not (string-match-p "a" region))))
-
-
-;;; registration
-
-(ert-deftest corral-kiro-test-harness-registered-as-scrape-strategy ()
-  (let ((harness (corral-harness-get 'kiro)))
-    (should harness)
-    (should (eq (corral-harness-strategy harness) 'scrape))
-    (should (eq (corral-harness-classifier harness) #'corral-kiro--classify))
-    (should (equal (corral-harness-abbrev harness) "kr"))))
-
-(ert-deftest corral-kiro-test-default-variant-registered ()
-  (should (equal (gethash (cons 'kiro nil) corral--variants) "kiro-cli chat")))
-
 (provide 'corral-kiro-tests)
 ;;; corral-kiro-tests.el ends here
