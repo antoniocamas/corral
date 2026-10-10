@@ -61,9 +61,16 @@
 ;; below the last horizontal rule, where Claude draws its dialogs and
 ;; footer (`corral-claude--after-last-rule').
 ;;
-;; DELIBERATELY NOT ported from claude.toml: the OSC-title spinner
-;; rule (corral only sees rendered buffer text, not escape sequences,
-;; same reason as in `corral-kiro.el'), and the "Waiting for N
+;; The footer and spinner are NOT enough on current Claude Code
+;; (v2.1.296): the footer no longer says "esc to interrupt", and the
+;; spinner line scrolls away once output streams, leaving a screen
+;; identical to idle. herdr's `osc_title_working' rule is the signal
+;; that survives: the terminal title carries a busy glyph ("◐ topic")
+;; during a turn and "✳ topic" when idle. vterm drops OSC titles, so
+;; `corral-vterm.el' records them (`corral-vterm-title') and the scrape
+;; tick passes the current one in `corral-scrape-title'.
+;;
+;; DELIBERATELY NOT ported from claude.toml: the "Waiting for N
 ;; background agents"/"MCP tasks still running" working rules (not yet
 ;; observed on a real screen; add them with a captured sample).
 ;;
@@ -154,13 +161,27 @@ mentions one of them does not trip it."
         (cl-some (lambda (l) (string-match-p corral-claude--spinner-regexp l))
                  (split-string region "\n")))))
 
+(defconst corral-claude--title-working-regexp
+  "^[\u2800-\u28FF\u25D0-\u25D3] "
+  "The terminal title while a turn runs: a busy-spinner glyph then the
+topic (\"◐ Story about a cat\"); idle is \"✳ ...\". Braille glyphs
+are Claude Code <= 2.1.227, half-circles 2.1.228+ (from herdr's
+`osc_title_working').")
+
+(defun corral-claude--title-working-p (title)
+  (and title (string-match-p corral-claude--title-working-regexp title)))
+
 (defun corral-claude--classify (tail)
   "Classify TAIL for a Claude Code session into `blocked', `working'
-or `idle'. blocked wins (it most needs the panel's attention, and a
-dialog replaces the live footer on screen), then working; anything
+or `idle'. A spinning terminal title (`corral-scrape-title') means
+working outright, as in herdr: current Claude Code shows no spinner or
+\"esc to interrupt\" on screen for most of a turn. Otherwise blocked
+wins (it most needs the panel's attention, and a dialog replaces the
+live footer on screen), then working by screen; anything
 else -- the prompt box, a bare shell before Claude starts, an empty
 tail -- is `idle'."
   (cond
+   ((corral-claude--title-working-p corral-scrape-title) 'working)
    ((corral-claude--blocked-p (corral-claude--after-last-rule tail)) 'blocked)
    ((corral-claude--working-p
      (corral-scrape-bottom-non-empty-lines

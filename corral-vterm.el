@@ -73,6 +73,18 @@ Deferred slightly so the shell has started before we type into it."
          (vterm-send-string command)
          (vterm-send-string "\n"))))))
 
+(defvar-local corral-vterm-title nil
+  "The terminal title last set by the program in this vterm buffer
+\(OSC 0/2), or nil. vterm only uses it to rename the buffer, and not
+even that by default, so it is recorded here by advice for scrape
+classifiers that detect state from it (see `corral-claude.el').")
+
+(defun corral--vterm-record-title (title)
+  "Advice (:before `vterm--set-title'): remember TITLE for this buffer."
+  (setq corral-vterm-title title))
+
+(advice-add 'vterm--set-title :before #'corral--vterm-record-title)
+
 (defun corral--buffer-tail (buffer &optional chars)
   "Return the last CHARS characters (default `corral-vterm-tail-chars')
 of BUFFER's text, or nil if BUFFER isn't live."

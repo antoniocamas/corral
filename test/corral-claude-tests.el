@@ -188,3 +188,25 @@ live screen counts."
 
 (provide 'corral-claude-tests)
 ;;; corral-claude-tests.el ends here
+
+;; Captured from Claude Code v2.1.296: mid-stream the screen is just
+;; output, a rule, an empty prompt box, and a footer without "esc to
+;; interrupt" -- indistinguishable from idle. Only the title differs.
+(defconst corral-claude-test--streaming-screen
+  (concat "  382\n  383\n  384\n" corral-claude-test--rule "\n❯ \n"
+          corral-claude-test--rule "\n  Sonnet 5.5  ctx: 4.0%\n  ⏸ manual mode on\n"))
+
+(ert-deftest corral-claude-test-streaming-screen-is-idle-without-title ()
+  (let ((corral-scrape-title nil))
+    (should (eq 'idle (corral-claude--classify corral-claude-test--streaming-screen)))))
+
+(ert-deftest corral-claude-test-spinning-title-is-working ()
+  (dolist (title '("◐ Story about a cat" "◑ Story about a cat" "⠂ Story"))
+    (let ((corral-scrape-title title))
+      (should (eq 'working (corral-claude--classify
+                            corral-claude-test--streaming-screen))))))
+
+(ert-deftest corral-claude-test-idle-title-is-idle ()
+  (let ((corral-scrape-title "✳ Story about a cat"))
+    (should (eq 'idle (corral-claude--classify
+                       corral-claude-test--streaming-screen)))))

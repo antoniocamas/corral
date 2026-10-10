@@ -36,6 +36,13 @@ corral followed this after a hook-based Claude harness got stuck on
 and went further: it has no use for session identity, so it installs
 no hooks at all.
 
+The same manifest's `osc_title_working` / `osc_title_idle` rules
+(terminal title with a busy-spinner glyph vs `✳`) are carried over:
+screen text alone stopped showing a running turn in Claude Code
+2.1.296. corral gets the title from vterm (`corral-vterm-title`)
+rather than from the escape stream. Its `osc_progress_idle` rule and
+the kiro title rules remain unported.
+
 ```
 CLAUDE.md
 ```

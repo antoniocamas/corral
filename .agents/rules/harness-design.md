@@ -28,6 +28,15 @@
   real content entirely on a tall terminal window if a full-screen TUI
   pads unused rows with blank lines below its actual status — observed
   directly during the original PoC, not theorized.
+- **The terminal title is a legitimate scrape input.** vterm discards
+  OSC titles, so `corral-vterm.el` records them in `corral-vterm-title`
+  and the tick exposes the current one as `corral-scrape-title`
+  (dynamically bound; classifiers that don't need it ignore it). Use it
+  when the screen alone cannot show activity -- Claude Code v2.1.296
+  shows no spinner or "esc to interrupt" for most of a turn, and only
+  the title (`◐ topic` vs `✳ topic`) tells working from idle. The
+  classifier stays a function of tail + that variable; no per-session
+  state.
 - **Screen-scraping rules must be evidence-based**: capture real
   screen/tail text from the actual running tool and write rules
   against that, never against another tool's manifest or a guess. A

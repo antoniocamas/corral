@@ -45,7 +45,10 @@ subdirectory. Package name == file name == `provide` symbol, per file.
   `corral-switch-to-session`.
 - `corral-vterm.el` — vterm glue: `corral--vterm-spawn`,
   `corral--vterm-send-command`, `corral--buffer-tail` (character-budget
-  tail extraction for screen-scraping harnesses).
+  tail extraction for screen-scraping harnesses). Also records the
+  terminal title a program sets (OSC 0/2) in the buffer-local
+  `corral-vterm-title`, via advice on `vterm--set-title` -- vterm
+  otherwise discards it.
 - `corral-harness.el` — the `corral-harness` struct, the variant table
   (`corral-harness-add-variant`), `corral--do-launch`,
   `corral--project-root-name`. Also the launch entry points
@@ -60,14 +63,20 @@ subdirectory. Package name == file name == `provide` symbol, per file.
   Claude Code and cross-checked against herdr's `claude.toml`, plus the
   default `claude` launch variant. corral installs no hooks and never
   touches `~/.claude/settings.json` -- see `docs/inspiration.md` and
-  the "no hooks" note in `.agents/rules/harness-design.md`.
+  the "no hooks" note in `.agents/rules/harness-design.md`. Its
+  strongest working signal is not on screen but the terminal title
+  (`◐`/`◑`/braille glyph = turn running, `✳` = idle): current Claude
+  Code drops "esc to interrupt" and scrolls the spinner away mid-turn.
 - `corral-scrape.el` — generic scrape-strategy plumbing: a single shared
   timer (`corral-scrape--tick`) that scans every tracked session whose
   harness has `:strategy 'scrape`, started/stopped purely by observing
   `corral-session-change-hook` rather than explicit calls from
   `corral--do-launch` or a kill-buffer hook. Also
   `corral-scrape-bottom-non-empty-lines`, the region helper every
-  classifier uses to look only at the live bottom of the screen.
+  classifier uses to look only at the live bottom of the screen. The
+  tick also binds `corral-scrape-title` to the buffer's
+  `corral-vterm-title` around each classifier call, so a classifier
+  can use the title without its `(tail -> state)` signature changing.
 - `corral-antigravity.el` — the Antigravity harness (scrape strategy,
   `agy` has no hook system): `corral-antigravity--classify`,
   ported from a real captured PoC (see

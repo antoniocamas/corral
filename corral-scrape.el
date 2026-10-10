@@ -66,6 +66,12 @@ truncate."
 
 (defvar corral-scrape--timer nil)
 
+(defvar corral-scrape-title nil
+  "Bound by `corral-scrape--tick' to the terminal title of the buffer
+being classified (see `corral-vterm-title'), nil if none. Classifiers
+for tools that signal activity through the title read it; the rest
+ignore it.")
+
 (defun corral-scrape-bottom-non-empty-lines (tail n)
   "The last N non-empty lines of TAIL, rejoined with newlines --
 corral's port of herdr's `bottom_non_empty_lines(N)' region
@@ -135,7 +141,11 @@ the whole timer down, so it is caught, logged, and skipped."
                (tail-chars (corral-harness-tail-chars harness)))
           (when (and classifier (buffer-live-p buffer))
             (let* ((tail (corral--buffer-tail buffer tail-chars))
-                   (state (and tail (funcall classifier tail)))
+                   (state (and tail
+                               (let ((corral-scrape-title
+                                      (buffer-local-value
+                                       'corral-vterm-title buffer)))
+                                 (funcall classifier tail))))
                    (previous (plist-get session :state)))
               (corral-scrape--log pane-id state tail)
               (when (and state (not (eq state previous)))
