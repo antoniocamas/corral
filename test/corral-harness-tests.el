@@ -22,7 +22,9 @@
 ;; from the registered harnesses rather than hardcoded, `l' is reserved
 ;; for the dispatcher, first-letter clashes between harnesses fall back
 ;; to another free letter, and the dispatcher offers every registered
-;; variant (vanilla and named).
+;; variant (vanilla and named). Also covers the variant-registration
+;; guard: a variant for an unregistered harness is refused loudly,
+;; registering nothing.
 
 ;;; Code:
 
@@ -111,6 +113,18 @@ falls back to a later letter of its own name, so neither is dropped."
   "`corral-launch' with nothing registered is a `user-error'."
   (corral-harness-test--with-clean-registry
     (should-error (corral-launch) :type 'user-error)))
+
+(ert-deftest corral-harness-test-add-variant-refuses-unregistered-harness ()
+  "Adding a variant for an unregistered harness is a `user-error'
+that registers nothing -- a config line for a harness whose file
+never loaded (e.g. a stale installed copy predating it) must fail
+loudly here instead of offering a launcher that can never work."
+  (corral-harness-test--with-clean-registry
+    (let ((before (hash-table-count corral--variants)))
+      (should-error (var 'no-such-harness nil "no-such-tool")
+                    :type 'user-error)
+      (should (= (hash-table-count corral--variants) before))
+      (should-not (fboundp 'corral-launch-no-such-harness)))))
 
 (provide 'corral-harness-tests)
 ;;; corral-harness-tests.el ends here

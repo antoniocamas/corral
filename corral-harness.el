@@ -81,6 +81,15 @@ own basename."
               (format "corral-launch-%s-%s" harness-id variant-name)
             (format "corral-launch-%s" harness-id))))
 
+;; `corral-panel' requires this file, so it is required lazily below.
+(declare-function corral--panel-window "corral-panel")
+(declare-function corral-show-panel "corral-panel")
+
+(defcustom corral-auto-show-panel t
+  "When non-nil, launching a session opens the panel if it is hidden."
+  :type 'boolean
+  :group 'corral)
+
 (defun corral--do-launch (harness-id variant-name command)
   "Prompt for a directory and a session name, then spawn and track a
 new vterm session for HARNESS-ID/VARIANT-NAME, typing COMMAND into it."
@@ -107,7 +116,11 @@ new vterm session for HARNESS-ID/VARIANT-NAME, typing COMMAND into it."
       ;; before it actually is. The harness's own scrape classifier
       ;; takes over on the next tick once the tool is on screen.
       (corral--set-state pane-id 'idle)
-      (corral--vterm-send-command buffer command))))
+      (corral--vterm-send-command buffer command)
+      (when corral-auto-show-panel
+        (require 'corral-panel)
+        (unless (corral--panel-window)
+          (corral-show-panel))))))
 
 (defun corral-harness-add-variant (harness-id variant-name command)
   "Register COMMAND (a plain shell command string, may include flags)
@@ -117,7 +130,16 @@ command `corral-launch-<harness-id>[-<variant-name>]' for it.
 Call this from your own configuration (e.g. a setup-corral.el you
 load from init), not from a harness's own defining file -- which
 wrapper scripts/flags you personally use is not this package's
-concern."
+concern.
+
+Signals `user-error' when HARNESS-ID is not registered: a variant
+whose harness never loaded (its file missing from the load-path, or
+an installed copy predating it) can never launch, and registering it
+anyway just hides that behind a confusing error at launch time."
+  (unless (corral-harness-get harness-id)
+    (user-error "No harness registered for `%s' -- its corral-%s.el \
+never loaded (or the installed copy predates it); load the harness \
+before adding variants" harness-id harness-id))
   (puthash (cons harness-id variant-name) command corral--variants)
   (let ((name (corral--launcher-name harness-id variant-name)))
     (defalias name
