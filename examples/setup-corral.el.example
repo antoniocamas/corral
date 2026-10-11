@@ -42,15 +42,36 @@
 ;; daemon this left the installed copy silently stale (new commits, or
 ;; a just-added harness, never appeared). A synchronous `git fetch' +
 ;; `--ff-only' merge completes before `require'; `--ff-only' refuses
-;; rather than clobbering, so any local edits are safe.
+;; rather than clobbering, so any local edits are safe. The helper
+;; also recompiles out-of-date bytecode afterwards -- the raw `git'
+;; merge skips package-vc's own recompile step, and Emacs prefers a
+;; stale .elc over a newer .el (see the docstring below).
 (defun corral--sync-upgrade ()
-  "Fast-forward corral's package-vc checkout synchronously, before load."
+  "Fast-forward corral's package-vc checkout synchronously, before load.
+Also recompiles out-of-date .el files in the checkout afterwards: the
+raw `git' merge skips package-vc's recompile step, and Emacs prefers
+a stale .elc over a newer .el (warning only), so without this newly
+merged code -- say, a just-added harness -- would silently never
+load."
   (let ((dir (ignore-errors
                (package-vc--checkout-dir (cadr (assq 'corral package-alist))))))
     (when (and dir (file-directory-p (expand-file-name ".git" dir)))
-      (let ((default-directory dir))
+      ;; load-path too: byte-compile-file evaluates each file's
+      ;; top-level `require's, and this runs before the package has
+      ;; necessarily been activated.
+      (let ((default-directory dir)
+            (load-path (cons dir load-path)))
         (call-process "git" nil nil nil "fetch" "origin")
-        (call-process "git" nil nil nil "merge" "--ff-only" "origin/main")))))
+        (call-process "git" nil nil nil "merge" "--ff-only" "origin/main")
+        ;; `byte-recompile-directory' would also descend into the
+        ;; checkout's subdirectories (docs/, test/, ...), which the
+        ;; package never loads; walk only the package's own top-level
+        ;; .el files, recompiling just the out-of-date ones.
+        (dolist (el (directory-files dir t "\\.el\\'"))
+          (let ((elc (concat el "c")))
+            (when (or (not (file-exists-p elc))
+                      (file-newer-than-file-p el elc))
+              (byte-compile-file el))))))))
 
 (if (package-installed-p 'corral)
     (corral--sync-upgrade)
