@@ -25,6 +25,13 @@
 ;; buffer with no window gets a blank gutter; one shown in any window
 ;; gets the marker; the buffer of the selected window additionally gets
 ;; the `corral-panel-focused' face on its label.
+;;
+;; Labels use a registered harness's abbrev (`corral--panel-label'), so
+;; the sessions macro installs a fresh registry with one stub `claude'
+;; harness (:abbrev "cl") -- otherwise every label would read
+;; "claude-p1" when run in isolation (nothing registered) and "cl-p1"
+;; in a batch that also loads corral-claude, and the two runs would
+;; disagree about what the panel renders.
 
 ;;; Code:
 
@@ -37,13 +44,24 @@
 
 (require 'corral-core)
 (require 'corral-panel)
+(require 'corral-harness)
 
 (defmacro corral-panel-test--with-sessions (&rest body)
   "Run BODY against an empty registry; `mk' makes a tracked,
 subprocess-backed session buffer. Cleans up buffers/processes and
-restores a single-window layout afterward."
+restores a single-window layout afterward.
+
+`corral--harnesses' is rebound to a fresh table holding only a stub
+`claude' harness (:abbrev \"cl\"), so labels are deterministic no
+matter which harness files the surrounding batch happened to load --
+see the Commentary above."
   (declare (indent 0))
-  `(let ((bufs nil) (procs nil))
+  `(let ((bufs nil) (procs nil)
+         (corral--harnesses (make-hash-table :test 'eq))
+         (corral--variants (make-hash-table :test 'equal)))
+     (corral-harness-register
+      (make-corral-harness :id 'claude :abbrev "cl"
+                           :strategy 'scrape :classifier #'ignore))
      (clrhash corral--sessions)
      (unwind-protect
          (cl-flet ((mk (pane-id state)
@@ -79,7 +97,7 @@ not the visible marker."
       (mk "p1" 'idle)
       ;; p1's buffer is not shown in any window.
       (let* ((text (corral-panel-test--render-string))
-             (line (corral-panel-test--line-for text "claude-p1")))
+             (line (corral-panel-test--line-for text "cl-p1")))
         (should line)
         ;; Gutter is a space, not ">".
         (should (string-prefix-p "  " line))
@@ -94,7 +112,7 @@ visible marker in the gutter."
         ;; Actually display it in a window.
         (set-window-buffer (selected-window) b)
         (let* ((text (corral-panel-test--render-string))
-               (line (corral-panel-test--line-for text "claude-p1")))
+               (line (corral-panel-test--line-for text "cl-p1")))
           (should line)
           (should (string-prefix-p "> " line)))))))
 
@@ -118,8 +136,8 @@ face on its label; a merely-visible one does not."
           ;; against the real selected window by rendering in place.
           (corral--panel-render)
           (let* ((text (buffer-string))
-                 (fpos (string-match (regexp-quote "claude-pf") text))
-                 (opos (string-match (regexp-quote "claude-po") text)))
+                 (fpos (string-match (regexp-quote "cl-pf") text))
+                 (opos (string-match (regexp-quote "cl-po") text)))
             (should fpos)
             (should opos)
             ;; Focused label carries the face; the other does not.
@@ -135,7 +153,7 @@ face on its label; a merely-visible one does not."
       (let ((b (mk "p1" 'idle)))
         (set-window-buffer (selected-window) b)
         (let* ((text (corral-panel-test--render-string))
-               (line (corral-panel-test--line-for text "claude-p1")))
+               (line (corral-panel-test--line-for text "cl-p1")))
           (should (string-prefix-p "* " line)))))))
 
 (ert-deftest corral-panel-test-state-on-second-row-not-label-row ()
@@ -147,7 +165,7 @@ narrow panel."
       (set-window-buffer (selected-window) b)
       (let* ((text (corral-panel-test--render-string))
              (lines (split-string text "\n"))
-             (label-line (seq-find (lambda (l) (string-match-p "claude-p1" l)) lines))
+             (label-line (seq-find (lambda (l) (string-match-p "cl-p1" l)) lines))
              (label-idx (seq-position lines label-line))
              (second-row (nth (1+ label-idx) lines)))
         ;; State is NOT on the label row ...
