@@ -20,7 +20,12 @@
 ;; Sample strings here are the exact real captures made during the
 ;; original PoC (`../emacs-herd/herd-scrape.el'), reused verbatim as
 ;; fixtures rather than invented -- only the `waiting' -> `blocked'
-;; expectation changed, to match corral's own state vocabulary.
+;; expectation changed, to match corral's own state vocabulary. The
+;; question-dialog sample is an anonymized live capture from agy 1.4.2
+;; (the false `working' that motivated the key-hint-row rules;
+;; detection-relevant lines verbatim, project names replaced); the
+;; file-edit and slash-menu fixtures are derived from herdr's
+;; antigravity.toml evidence, as each docstring records.
 
 ;;; Code:
 
@@ -72,6 +77,69 @@ status-bar tag on the same screen still says [WORKING...]."
     (should harness)
     (should (eq (corral-harness-strategy harness) 'scrape))
     (should (eq (corral-harness-classifier harness) #'corral-antigravity--classify))))
+
+(defconst corral-antigravity-test--question-sample
+  "Question
+───────────────────────────────────────────────────────────────────────────────────────────────────────────
+Question 1/1: Which item from the backlog would you like to address?
+
+  1. (Recommended) Option A: Refactor the parser module (app-core, 22
+violations)
+  2. Option C: Split the configuration module (app-core, 19 violations)
+  3. Option D: Update the remaining adapters (app-lib, 5 violations)
+> 4. Option B: Fix the debug and query services (app-core, 4+ violations)
+  5. Write-in...
+
+  ↑/↓ Navigate · enter Select · esc Skip
+✦ 3.8 Flash (High)  Ctx: 5.0% (60k/1.0M)  [USING TOOLS]"
+  "Anonymized question-dialog capture from agy 1.4.2 (2026-10-19):
+the detection-relevant lines -- the `Question 1/1' header shape, the
+numbered-option list, the key-hint row, and the [USING TOOLS] status
+line -- are verbatim; the question and option text are generic
+replacements, as the real capture named a private project. It remains
+the failure that motivated the key-hint-row rules: the status-bar tag
+reads [USING TOOLS] while the agent is stopped on the user's choice,
+and no permission text is on screen -- the old rules called this
+`working'.")
+
+(ert-deftest corral-antigravity-test-question-dialog-is-blocked ()
+  "A question dialog classifies as `blocked' even though the
+status-bar tag on the same screen still says [USING TOOLS] -- the
+agy 1.4.2 false-`working' failure."
+  (should (eq (corral-antigravity--classify corral-antigravity-test--question-sample)
+              'blocked)))
+
+(ert-deftest corral-antigravity-test-file-edit-confirmation-row-is-blocked ()
+  "The file-edit confirmation's key-hint row (`tab Amend · f full
+diff' -- herdr's captured variant, the PoC-era \"might use different
+wording\" open item) classifies as `blocked', even under a
+[WORKING...] tag."
+  (should (eq (corral-antigravity--classify
+               "  ↑/↓ Navigate · tab Amend · f full diff
+✦ 3.8 Flash (High)  Ctx: 5.0% (60k/1.0M)  [WORKING...]")
+              'blocked)))
+
+(ert-deftest corral-antigravity-test-stale-question-row-in-scrollback-is-not-blocked ()
+  "A question dialog already answered and scrolled off must not keep
+the session `blocked': the dialog rules read only the bottom
+non-empty lines, so once newer transcript text and a live [WORKING...]
+tag sit below the old row, the session classifies as `working'."
+  (should (eq (corral-antigravity--classify
+               (concat corral-antigravity-test--question-sample "
+Option B selected. Continuing with the next task...
+
+✦ 3.8 Flash (High)  Ctx: 5.2% (62k/1.0M)  [WORKING...]"))
+              'working)))
+
+(ert-deftest corral-antigravity-test-slash-menu-row-is-not-blocked ()
+  "The idle slash-menu's key-hint row shares `navigate' and even
+`enter Select' with the question row but has neither `esc Skip' nor
+`tab Amend' (herdr's manifest notes it as an idle footer) -- the
+two-phrase gate must keep it out of `blocked'."
+  (should (eq (corral-antigravity--classify
+               "  ↑/↓ Navigate · enter Select · tab Complete
+✦ 3.8 Flash (High)  Ctx: 5.0% (60k/1.0M)  [IDLE]")
+              'idle)))
 
 (provide 'corral-antigravity-tests)
 ;;; corral-antigravity-tests.el ends here
